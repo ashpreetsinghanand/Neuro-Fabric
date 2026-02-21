@@ -64,3 +64,34 @@ class AgentState(TypedDict):
     artifacts: list[str]                     # absolute paths of generated files
     current_task: str                        # active high-level task description
     errors: list[str]                        # accumulated error messages
+
+
+def extract_message_content(content: Any) -> str:
+    """
+    Robustly extract text content from a LangChain message content object.
+    Handles:
+    1. Plain strings
+    2. List of parts (dictionaries with a 'text' key) - common in Gemini 2.0+
+    3. List of strings
+    """
+    if isinstance(content, str):
+        return content
+    
+    if isinstance(content, list):
+        if not content:
+            return ""
+        
+        # Join all text parts if it's a list of dicts (Gemini style) or strings
+        text_parts = []
+        for part in content:
+            if isinstance(part, str):
+                text_parts.append(part)
+            elif isinstance(part, dict) and "text" in part:
+                text_parts.append(part["text"])
+            elif hasattr(part, "text"): # Some objects might have .text
+                text_parts.append(part.text)
+            else:
+                text_parts.append(str(part))
+        return "".join(text_parts)
+    
+    return str(content)

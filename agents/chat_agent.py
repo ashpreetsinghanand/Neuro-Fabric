@@ -17,7 +17,7 @@ from langchain_google_genai import ChatGoogleGenerativeAI
 from langgraph.prebuilt import create_react_agent
 
 from core.config import GEMINI_MODEL, GOOGLE_API_KEY
-from core.state import AgentState
+from core.state import AgentState, extract_message_content
 from tools.schema_tools import get_columns, list_tables
 from tools.sql_tools import SQL_TOOLS
 
@@ -82,7 +82,8 @@ def _build_context(state: AgentState) -> str:
             desc = col_descriptions.get(col["name"], "")
             pk = " [PK]" if col.get("is_primary_key") else ""
             fk = " [FK]" if col.get("is_foreign_key") else ""
-            lines.append(f"  - `{col['name']}` ({col['data_type']}){pk}{fk}: {desc}")
+            dtype = col.get("data_type") or col.get("type", "unknown")
+            lines.append(f"  - `{col['name']}` ({dtype}){pk}{fk}: {desc}")
         if len(cols) > 20:
             lines.append(f"  - ... and {len(cols) - 20} more columns")
         lines.append("")
@@ -137,7 +138,7 @@ def chat_agent_node(state: AgentState) -> dict[str, Any]:
 
     try:
         result = agent.invoke({"messages": agent_messages})
-        ai_response = result["messages"][-1].content
+        ai_response = extract_message_content(result["messages"][-1].content)
         return {"messages": [AIMessage(content=ai_response)]}
     except Exception as exc:
         logger.error("Chat Agent failed: %s", exc)

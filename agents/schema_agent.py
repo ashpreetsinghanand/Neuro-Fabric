@@ -21,7 +21,7 @@ from langchain_google_genai import ChatGoogleGenerativeAI
 from langgraph.prebuilt import create_react_agent
 
 from core.config import GEMINI_MODEL, GOOGLE_API_KEY, SCHEMA_CACHE_FILE
-from core.state import AgentState
+from core.state import AgentState, extract_message_content
 from tools.schema_tools import SCHEMA_TOOLS
 
 logger = logging.getLogger(__name__)
@@ -101,9 +101,8 @@ def schema_agent_node(state: AgentState) -> dict[str, Any]:
         result = agent.invoke(
             {"messages": [SystemMessage(content=_SYSTEM_PROMPT), user_message]}
         )
-        # Extract the last AI message content
-        final_content = result["messages"][-1].content
-
+        final_content = extract_message_content(result["messages"][-1].content)
+        
         # Parse the JSON output from the agent
         # Agent may wrap in markdown code fences
         cleaned = final_content.strip()

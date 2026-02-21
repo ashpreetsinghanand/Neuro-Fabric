@@ -16,7 +16,7 @@ from langchain_core.messages import HumanMessage, SystemMessage
 from langchain_google_genai import ChatGoogleGenerativeAI
 
 from core.config import GEMINI_MODEL, GOOGLE_API_KEY
-from core.state import AgentState
+from core.state import AgentState, extract_message_content
 
 logger = logging.getLogger(__name__)
 
@@ -107,7 +107,8 @@ def ai_doc_agent_node(state: AgentState) -> dict[str, Any]:
             response = llm.invoke(
                 [SystemMessage(content=_SYSTEM_PROMPT), user_message]
             )
-            content = response.content.strip()
+            response_content = extract_message_content(response.content)
+            content = response_content.strip()
 
             # Strip markdown fences if present
             if content.startswith("```"):

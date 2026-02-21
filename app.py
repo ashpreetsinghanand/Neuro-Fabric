@@ -55,7 +55,7 @@ init_session()
 # ---------------------------------------------------------------------------
 
 with st.sidebar:
-    st.title("🧠 Neuro-Fabric")
+    st.title("🧠 Neuro Fabric")
     st.caption("AI-Powered Data Dictionary Platform")
     st.divider()
 

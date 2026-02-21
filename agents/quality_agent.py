@@ -17,7 +17,7 @@ from langchain_google_genai import ChatGoogleGenerativeAI
 from langgraph.prebuilt import create_react_agent
 
 from core.config import GEMINI_MODEL, GOOGLE_API_KEY
-from core.state import AgentState
+from core.state import AgentState, extract_message_content
 from tools.quality_tools import QUALITY_TOOLS
 from tools.schema_tools import get_columns
 
@@ -89,7 +89,7 @@ def quality_agent_node(state: AgentState) -> dict[str, Any]:
             name: {
                 "primary_keys": info.get("primary_keys", []),
                 "columns": [
-                    {"name": c["name"], "data_type": c["data_type"]}
+                    {"name": c["name"], "data_type": c.get("data_type") or c.get("type", "unknown")}
                     for c in info.get("columns", [])
                 ],
             }
@@ -116,8 +116,7 @@ def quality_agent_node(state: AgentState) -> dict[str, Any]:
         result = agent.invoke(
             {"messages": [SystemMessage(content=_SYSTEM_PROMPT), user_message]}
         )
-        final_content = result["messages"][-1].content
-
+        final_content = extract_message_content(result["messages"][-1].content)
         cleaned = final_content.strip()
         if cleaned.startswith("```"):
             cleaned = cleaned.split("```")[1]
