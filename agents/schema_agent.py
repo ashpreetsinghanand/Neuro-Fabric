@@ -104,6 +104,11 @@ def schema_agent_node(state: AgentState) -> dict[str, Any]:
         # Extract the last AI message content
         final_content = result["messages"][-1].content
 
+        if isinstance(final_content, list):
+            final_content = final_content[0] if final_content else ""
+        elif not isinstance(final_content, str):
+            final_content = str(final_content)
+            
         # Parse the JSON output from the agent
         # Agent may wrap in markdown code fences
         cleaned = final_content.strip()

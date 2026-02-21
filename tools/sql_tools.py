@@ -1,17 +1,15 @@
 """
-LangChain tools for SQL execution and query suggestion.
+LangChain tools for SQL execution.
 Used by the Conversational Chat Agent.
 """
-
 from __future__ import annotations
 
 import json
 import logging
 
 from langchain_core.tools import tool
-from sqlalchemy import text
 
-from core.db_connectors import get_engine
+from core.db_connectors import DuckDBEngine, get_engine
 
 logger = logging.getLogger(__name__)
 
@@ -29,7 +27,6 @@ def execute_query(sql: str, db_config_json: str = "{}") -> str:
         JSON with rows (list of dicts) and column names, capped at 100 rows.
     """
     db_config = json.loads(db_config_json) if db_config_json else {}
-    # Safety: only allow SELECT statements
     normalized = sql.strip().upper()
     if not normalized.startswith("SELECT") and not normalized.startswith("WITH"):
         return json.dumps({"error": "Only SELECT/WITH queries are permitted."})
@@ -37,7 +34,7 @@ def execute_query(sql: str, db_config_json: str = "{}") -> str:
     engine = get_engine(db_config)
     try:
         with engine.connect() as conn:
-            result = conn.execute(text(sql))
+            result = conn.execute(sql)
             columns = list(result.keys())
             rows = [dict(zip(columns, row)) for row in result.fetchmany(100)]
         return json.dumps({
@@ -54,7 +51,7 @@ def execute_query(sql: str, db_config_json: str = "{}") -> str:
 @tool
 def get_sample_rows(
     table_name: str,
-    schema_name: str = "public",
+    schema_name: str = "",
     limit: int = 5,
     db_config_json: str = "{}",
 ) -> str:
@@ -63,7 +60,7 @@ def get_sample_rows(
 
     Args:
         table_name: The table to sample from.
-        schema_name: Schema containing the table (default: 'public').
+        schema_name: Schema containing the table (leave empty for default).
         limit: Number of sample rows to return (max 20).
         db_config_json: JSON string with optional db connection config.
 
@@ -73,10 +70,14 @@ def get_sample_rows(
     db_config = json.loads(db_config_json) if db_config_json else {}
     limit = min(limit, 20)
     engine = get_engine(db_config)
+
+    if not schema_name:
+        schema_name = "main" if isinstance(engine, DuckDBEngine) else "public"
+
     try:
         with engine.connect() as conn:
             result = conn.execute(
-                text(f'SELECT * FROM "{schema_name}"."{table_name}" LIMIT {limit}')
+                f'SELECT * FROM "{schema_name}"."{table_name}" LIMIT {limit}'
             )
             columns = list(result.keys())
             rows = [dict(zip(columns, row)) for row in result.fetchall()]

@@ -1,9 +1,7 @@
 """
 LangChain tools for schema extraction.
-Each tool operates against a live SQLAlchemy engine passed through the
-agent's injected `engine` dependency, or falls back to the default engine.
+Each tool operates against the default engine (DuckDB or Postgres).
 """
-
 from __future__ import annotations
 
 import json
@@ -11,16 +9,21 @@ import logging
 from typing import Any
 
 from langchain_core.tools import tool
-from sqlalchemy import text
-from sqlalchemy.engine import Engine
 
-from core.db_connectors import get_engine, get_inspector, list_schemas
+from core.db_connectors import DuckDBEngine, get_engine, get_inspector, list_schemas
 
 logger = logging.getLogger(__name__)
 
 
-def _get_engine(db_config: dict | None = None) -> Engine:
+def _get_engine(db_config: dict | None = None):
     return get_engine(db_config)
+
+
+def _default_schema(engine) -> str:
+    """Return default schema name for the engine type."""
+    if isinstance(engine, DuckDBEngine):
+        return "main"
+    return "public"
 
 
 # ---------------------------------------------------------------------------
@@ -28,12 +31,12 @@ def _get_engine(db_config: dict | None = None) -> Engine:
 # ---------------------------------------------------------------------------
 
 @tool
-def list_tables(schema_name: str = "public", db_config_json: str = "{}") -> str:
+def list_tables(schema_name: str = "", db_config_json: str = "{}") -> str:
     """
     List all user tables in the specified database schema.
 
     Args:
-        schema_name: The schema to inspect (default: 'public').
+        schema_name: The schema to inspect (leave empty for default).
         db_config_json: JSON string with optional db connection config.
 
     Returns:
@@ -41,6 +44,7 @@ def list_tables(schema_name: str = "public", db_config_json: str = "{}") -> str:
     """
     db_config = json.loads(db_config_json) if db_config_json else {}
     engine = _get_engine(db_config)
+    schema_name = schema_name or _default_schema(engine)
     inspector = get_inspector(engine)
     try:
         tables = inspector.get_table_names(schema=schema_name)
@@ -80,14 +84,14 @@ def list_all_schemas(db_config_json: str = "{}") -> str:
 # ---------------------------------------------------------------------------
 
 @tool
-def get_columns(table_name: str, schema_name: str = "public", db_config_json: str = "{}") -> str:
+def get_columns(table_name: str, schema_name: str = "", db_config_json: str = "{}") -> str:
     """
     Get all column definitions for a given table including data type,
     nullability, default, and primary key membership.
 
     Args:
         table_name: The table to inspect.
-        schema_name: The schema containing the table (default: 'public').
+        schema_name: The schema containing the table (leave empty for default).
         db_config_json: JSON string with optional db connection config.
 
     Returns:
@@ -95,6 +99,7 @@ def get_columns(table_name: str, schema_name: str = "public", db_config_json: st
     """
     db_config = json.loads(db_config_json) if db_config_json else {}
     engine = _get_engine(db_config)
+    schema_name = schema_name or _default_schema(engine)
     inspector = get_inspector(engine)
     try:
         columns = inspector.get_columns(table_name, schema=schema_name)
@@ -105,7 +110,7 @@ def get_columns(table_name: str, schema_name: str = "public", db_config_json: st
         for col in columns:
             result.append({
                 "name": col["name"],
-                "data_type": str(col["type"]),
+                "data_type": str(col.get("type", col.get("data_type", "UNKNOWN"))),
                 "nullable": col.get("nullable", True),
                 "default": str(col.get("default")) if col.get("default") is not None else None,
                 "is_primary_key": col["name"] in pk_cols,
@@ -121,13 +126,13 @@ def get_columns(table_name: str, schema_name: str = "public", db_config_json: st
 # ---------------------------------------------------------------------------
 
 @tool
-def get_foreign_keys(table_name: str, schema_name: str = "public", db_config_json: str = "{}") -> str:
+def get_foreign_keys(table_name: str, schema_name: str = "", db_config_json: str = "{}") -> str:
     """
     Retrieve all foreign key relationships for a table.
 
     Args:
         table_name: The table to inspect.
-        schema_name: The schema containing the table (default: 'public').
+        schema_name: The schema containing the table (leave empty for default).
         db_config_json: JSON string with optional db connection config.
 
     Returns:
@@ -135,6 +140,7 @@ def get_foreign_keys(table_name: str, schema_name: str = "public", db_config_jso
     """
     db_config = json.loads(db_config_json) if db_config_json else {}
     engine = _get_engine(db_config)
+    schema_name = schema_name or _default_schema(engine)
     inspector = get_inspector(engine)
     try:
         fks = inspector.get_foreign_keys(table_name, schema=schema_name)
@@ -162,13 +168,13 @@ def get_foreign_keys(table_name: str, schema_name: str = "public", db_config_jso
 # ---------------------------------------------------------------------------
 
 @tool
-def get_constraints(table_name: str, schema_name: str = "public", db_config_json: str = "{}") -> str:
+def get_constraints(table_name: str, schema_name: str = "", db_config_json: str = "{}") -> str:
     """
     Get all constraints (primary key, unique, check) and indexes for a table.
 
     Args:
         table_name: The table to inspect.
-        schema_name: The schema containing the table (default: 'public').
+        schema_name: The schema containing the table (leave empty for default).
         db_config_json: JSON string with optional db connection config.
 
     Returns:
@@ -176,6 +182,7 @@ def get_constraints(table_name: str, schema_name: str = "public", db_config_json
     """
     db_config = json.loads(db_config_json) if db_config_json else {}
     engine = _get_engine(db_config)
+    schema_name = schema_name or _default_schema(engine)
     inspector = get_inspector(engine)
     try:
         pk = inspector.get_pk_constraint(table_name, schema=schema_name)
@@ -200,13 +207,13 @@ def get_constraints(table_name: str, schema_name: str = "public", db_config_json
 # ---------------------------------------------------------------------------
 
 @tool
-def get_table_row_count(table_name: str, schema_name: str = "public", db_config_json: str = "{}") -> str:
+def get_table_row_count(table_name: str, schema_name: str = "", db_config_json: str = "{}") -> str:
     """
     Get the approximate row count for a table using a fast query.
 
     Args:
         table_name: The table to count.
-        schema_name: The schema containing the table (default: 'public').
+        schema_name: The schema containing the table (leave empty for default).
         db_config_json: JSON string with optional db connection config.
 
     Returns:
@@ -214,12 +221,13 @@ def get_table_row_count(table_name: str, schema_name: str = "public", db_config_
     """
     db_config = json.loads(db_config_json) if db_config_json else {}
     engine = _get_engine(db_config)
+    schema_name = schema_name or _default_schema(engine)
     try:
         with engine.connect() as conn:
-            result = conn.execute(
-                text(f'SELECT COUNT(*) FROM "{schema_name}"."{table_name}"')
-            )
-            count = result.scalar()
+            sql = f'SELECT COUNT(*) FROM "{schema_name}"."{table_name}"'
+            result = conn.execute(sql)
+            rows = result.fetchone()
+            count = rows[0] if rows else 0
         return json.dumps({"table": table_name, "row_count": count})
     except Exception as exc:
         logger.error("get_table_row_count failed for %s: %s", table_name, exc)

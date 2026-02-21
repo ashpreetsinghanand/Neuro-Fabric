@@ -107,7 +107,13 @@ def ai_doc_agent_node(state: AgentState) -> dict[str, Any]:
             response = llm.invoke(
                 [SystemMessage(content=_SYSTEM_PROMPT), user_message]
             )
-            content = response.content.strip()
+            response_content = response.content
+            if isinstance(response_content, list):
+                response_content = response_content[0] if response_content else ""
+            elif not isinstance(response_content, str):
+                response_content = str(response_content)
+                
+            content = response_content.strip()
 
             # Strip markdown fences if present
             if content.startswith("```"):

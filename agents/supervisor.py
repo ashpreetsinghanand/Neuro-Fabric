@@ -133,7 +133,13 @@ def supervisor_node(state: AgentState) -> dict[str, Any]:
         SystemMessage(content=_SUPERVISOR_SYSTEM),
         HumanMessage(content=context),
     ])
-    decision = response.content.strip()
+    response_content = response.content
+    if isinstance(response_content, list):
+        response_content = response_content[0] if response_content else ""
+    elif not isinstance(response_content, str):
+        response_content = str(response_content)
+        
+    decision = response_content.strip()
     logger.info("Supervisor decision: %s", decision)
     return {"current_task": decision if decision != "FINISH" else "done"}
 
