@@ -12,7 +12,8 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
 from pydantic import BaseModel
-from core.config import LOG_LEVEL, OUTPUTS_DIR, validate_config
+from core.config import LOG_LEVEL, OUTPUTS_DIR, validate_config, GEMINI_MODEL
+from core.state import extract_message_content
 
 logging.basicConfig(level=getattr(logging, LOG_LEVEL, logging.INFO),
                     format="%(asctime)s [%(levelname)s] %(name)s: %(message)s")
@@ -90,10 +91,17 @@ async def startup_event():
     if DATABASE_URL or SUPABASE_URL:
         try:
             logger.info("Startup: Attempting auto-reconnect to database...")
-            _get_engine_forced()
+            if DATABASE_URL:
+                from sqlalchemy import create_engine
+                global _current_engine, _current_engine_type
+                _current_engine = create_engine(DATABASE_URL, pool_pre_ping=True)
+                _current_engine_type = "postgres"
+                logger.info("Startup: Connected to Postgres via DATABASE_URL")
+            else:
+                _get_engine_forced(force_supabase=True)
             logger.info("Startup: Auto-reconnect successful.")
         except Exception as e:
-            logger.warning(f"Startup: Auto-reconnect failed (this is expected if .env isn't set up yet): {e}")
+            logger.warning(f"Startup: Auto-reconnect failed: {e}")
 
 # ── Models ───────────────────────────────────────────────────────────────────
 class ConnectRequest(BaseModel):
@@ -418,18 +426,14 @@ Format as JSON with keys: business_summary, column_descriptions (object), usage_
                     import google.genai as genai
                     genai_client = genai.Client(api_key=GOOGLE_API_KEY)
                     response = genai_client.models.generate_content(
-                        model="gemini-2.5-flash",
+                        model=GEMINI_MODEL,
                         contents=prompt
                     )
                     
                     try:
                         import json
                         # Try to parse JSON from response (strip markdown blocks if present)
-                        content = response.text
-                        if not isinstance(content, str):
-                            # Handle Gemini 2.0 list responses
-                            content = content[0] if isinstance(content, list) else str(content)
-                            
+                        content = extract_message_content(response.text)
                         clean_text = content.replace('```json', '').replace('```', '').strip()
                         doc_data = json.loads(clean_text)
                         full_name = f"{schema_name}.{table_name}" if schema_name != "main" else table_name
@@ -727,11 +731,7 @@ Format as JSON with keys: table_name, business_description, column_descriptions 
                 import json
                 try:
                     # Try to parse as JSON
-                    content = msgs[-1].content
-                    if not isinstance(content, str):
-                        # Content might be a list (e.g. for multi-modal or tool use in new LangGraph)
-                        content = content[0] if isinstance(content, list) else str(content)
-                        
+                    content = extract_message_content(msgs[-1].content)
                     if '```json' in content:
                         content = content.split('```json')[1].split('```')[0]
                     return json.loads(content.strip())
@@ -880,11 +880,7 @@ async def chat(req: ChatRequest):
         if not msgs:
             return {"response": "No response."}
             
-        content = msgs[-1].content
-        if not isinstance(content, str):
-            # Handle Gemini 2.0 list responses
-            content = content[0] if isinstance(content, list) else str(content)
-            
+        content = extract_message_content(msgs[-1].content)
         return {"response": content}
     except Exception as e:
         logger.error("Chat LLM failed: %s", e)

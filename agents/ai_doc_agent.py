@@ -16,7 +16,7 @@ from langchain_core.messages import HumanMessage, SystemMessage
 from langchain_google_genai import ChatGoogleGenerativeAI
 
 from core.config import GEMINI_MODEL, GOOGLE_API_KEY
-from core.state import AgentState
+from core.state import AgentState, extract_message_content
 
 logger = logging.getLogger(__name__)
 
@@ -107,12 +107,7 @@ def ai_doc_agent_node(state: AgentState) -> dict[str, Any]:
             response = llm.invoke(
                 [SystemMessage(content=_SYSTEM_PROMPT), user_message]
             )
-            response_content = response.content
-            if isinstance(response_content, list):
-                response_content = response_content[0] if response_content else ""
-            elif not isinstance(response_content, str):
-                response_content = str(response_content)
-                
+            response_content = extract_message_content(response.content)
             content = response_content.strip()
 
             # Strip markdown fences if present

@@ -30,7 +30,7 @@ from agents.export_agent import export_agent_node
 from agents.quality_agent import quality_agent_node
 from agents.schema_agent import schema_agent_node
 from core.config import GEMINI_MODEL, GOOGLE_API_KEY
-from core.state import AgentState
+from core.state import AgentState, extract_message_content
 
 logger = logging.getLogger(__name__)
 
@@ -133,12 +133,7 @@ def supervisor_node(state: AgentState) -> dict[str, Any]:
         SystemMessage(content=_SUPERVISOR_SYSTEM),
         HumanMessage(content=context),
     ])
-    response_content = response.content
-    if isinstance(response_content, list):
-        response_content = response_content[0] if response_content else ""
-    elif not isinstance(response_content, str):
-        response_content = str(response_content)
-        
+    response_content = extract_message_content(response.content)
     decision = response_content.strip()
     logger.info("Supervisor decision: %s", decision)
     return {"current_task": decision if decision != "FINISH" else "done"}
