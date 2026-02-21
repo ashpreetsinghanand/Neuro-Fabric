@@ -114,8 +114,9 @@ def write_markdown_artifact(db_name: str, content_json: str) -> str:
                     fk = "✓" if col.get("is_foreign_key") else ""
                     nullable = "Yes" if col.get("nullable") else "No"
                     desc = col_descriptions.get(col["name"], "")
+                    dtype = col.get("data_type") or col.get("type", "unknown")
                     lines.append(
-                        f"| `{col['name']}` | {col['data_type']} | {nullable} | {pk} | {fk} | {desc} |"
+                        f"| `{col['name']}` | {dtype} | {nullable} | {pk} | {fk} | {desc} |"
                     )
                 lines.append("")
 

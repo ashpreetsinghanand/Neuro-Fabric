@@ -89,7 +89,7 @@ def quality_agent_node(state: AgentState) -> dict[str, Any]:
             name: {
                 "primary_keys": info.get("primary_keys", []),
                 "columns": [
-                    {"name": c["name"], "data_type": c["data_type"]}
+                    {"name": c["name"], "data_type": c.get("data_type") or c.get("type", "unknown")}
                     for c in info.get("columns", [])
                 ],
             }

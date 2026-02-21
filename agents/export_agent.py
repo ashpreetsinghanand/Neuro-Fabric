@@ -92,8 +92,9 @@ def _write_markdown(db_name: str, schema: dict, quality: dict, docs: dict) -> st
                 null_rate = f"{cq.get('null_rate', 0) * 100:.1f}%" if "null_rate" in cq else "-"
                 distinct = str(cq.get("distinct_count", "-"))
                 desc = col_descriptions.get(col["name"], "")
+                dtype = col.get("data_type") or col.get("type", "unknown")
                 lines.append(
-                    f"| `{col['name']}` | `{col['data_type']}` | {nullable} | {pk} | {fk} | {null_rate} | {distinct} | {desc} |"
+                    f"| `{col['name']}` | `{dtype}` | {nullable} | {pk} | {fk} | {null_rate} | {distinct} | {desc} |"
                 )
             lines.append("")
 

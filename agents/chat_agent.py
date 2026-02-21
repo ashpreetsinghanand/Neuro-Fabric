@@ -82,7 +82,8 @@ def _build_context(state: AgentState) -> str:
             desc = col_descriptions.get(col["name"], "")
             pk = " [PK]" if col.get("is_primary_key") else ""
             fk = " [FK]" if col.get("is_foreign_key") else ""
-            lines.append(f"  - `{col['name']}` ({col['data_type']}){pk}{fk}: {desc}")
+            dtype = col.get("data_type") or col.get("type", "unknown")
+            lines.append(f"  - `{col['name']}` ({dtype}){pk}{fk}: {desc}")
         if len(cols) > 20:
             lines.append(f"  - ... and {len(cols) - 20} more columns")
         lines.append("")
