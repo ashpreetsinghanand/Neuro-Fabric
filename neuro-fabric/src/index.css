@@ -457,7 +457,7 @@ body {
   grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
   gap: 24px;
 
-    margin-top: 16px;
+  margin-top: 16px;
 }
 
 .chart-card {
@@ -1025,43 +1025,76 @@ body {
 }
 
 /* Typinc Indicator */
-.typing-indicator {
+.thinking-steps {
   display: flex;
-  gap: 4px;
+  flex-direction: column;
+  gap: 8px;
   padding: 16px;
-  background: #f8fafc;
+  background: var(--muted, #f8fafc);
   border-radius: 12px;
   border-top-left-radius: 4px;
-  border: 1px solid #e2e8f0;
-  width: fit-content;
+  border: 1px solid var(--border, #e2e8f0);
 }
 
-.typing-dot {
-  width: 6px;
-  height: 6px;
-  background: #94a3b8;
+.thinking-step {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.85rem;
+  color: var(--muted-foreground, #94a3b8);
+  opacity: 0.3;
+  transition: all 0.4s ease;
+}
+
+.thinking-step.active {
+  opacity: 1;
+  color: var(--foreground, #1e293b);
+}
+
+.thinking-step.current {
+  color: var(--primary, #6366f1);
+  font-weight: 600;
+}
+
+.thinking-step-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 6px;
+  background: var(--muted, #f1f5f9);
+  transition: background 0.3s;
+}
+
+.thinking-step.current .thinking-step-icon {
+  background: rgba(99, 102, 241, 0.15);
+}
+
+.thinking-step-label {
+  flex: 1;
+}
+
+.thinking-pulse {
+  width: 8px;
+  height: 8px;
   border-radius: 50%;
-  animation: typing 1.4s infinite ease-in-out both;
+  background: var(--primary, #6366f1);
+  animation: pulse-thinking 1.2s infinite ease-in-out;
+  margin-left: 4px;
 }
 
-.typing-dot:nth-child(1) {
-  animation-delay: -0.32s;
-}
-
-.typing-dot:nth-child(2) {
-  animation-delay: -0.16s;
-}
-
-@keyframes typing {
+@keyframes pulse-thinking {
 
   0%,
-  80%,
   100% {
-    transform: scale(0);
+    opacity: 0.3;
+    transform: scale(0.8);
   }
 
-  40% {
-    transform: scale(1);
+  50% {
+    opacity: 1;
+    transform: scale(1.2);
   }
 }
 
@@ -1640,13 +1673,31 @@ body {
 }
 
 .query-suggestion {
-  background: #0f172a;
-  color: #f8fafc;
   padding: 16px;
-  border-radius: calc(var(--radius) - 2px);
-  overflow-x: auto;
+  background: var(--muted);
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.query-header {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.query-name {
+  font-weight: 600;
+  font-size: 0.9375rem;
+  color: var(--foreground);
+}
+
+.query-description {
   font-size: 0.8125rem;
-  box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.5);
+  color: var(--muted-foreground);
+  line-height: 1.4;
 }
 
 /* ── Restored Missing Classes ────────────────────────────────────────────── */

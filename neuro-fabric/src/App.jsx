@@ -1,8 +1,30 @@
 import {
-  useState, useEffect, useRef
+  useState, useEffect, useRef, useCallback
 } from 'react'; import {
   LayoutDashboard, Settings, Database, BookOpen, GitMerge, TerminalSquare, ShieldCheck, MessageSquare, Github, Package, List, ShoppingCart, DollarSign, Users, Star, TrendingUp, Truck, CreditCard, BarChart2, Folder, Key, Link, Table2, ArrowLeft, Hourglass, RefreshCw, Bot, Lightbulb, AlertTriangle, Search, FileText, Command, Play, XCircle, Clock, Check, Brain, MessageCircle, Trash2, User, Info, ArrowRight, CheckCircle2
 } from 'lucide-react';
+import mermaid from 'mermaid';
+
+mermaid.initialize({
+  startOnLoad: false,
+  theme: 'dark',
+  themeVariables: {
+    primaryColor: '#6366f1',
+    primaryTextColor: '#f1f5f9',
+    primaryBorderColor: '#818cf8',
+    lineColor: '#94a3b8',
+    secondaryColor: '#1e293b',
+    tertiaryColor: '#0f172a',
+    background: '#0f172a',
+    mainBkg: '#1e293b',
+    nodeBorder: '#818cf8',
+    clusterBkg: '#1e293b',
+    titleColor: '#f1f5f9',
+    edgeLabelBackground: '#1e293b',
+  },
+  er: { useMaxWidth: true, layoutDirection: 'TB' },
+  securityLevel: 'loose',
+});
 
 const API = 'http://localhost:8000';
 
@@ -209,7 +231,7 @@ function Dashboard({ connected, engine, analytics, schema }) {
         {/* Order Status Distribution */}
         {analytics?.order_status && (
           <div className="chart-card">
-            <h3 className="chart-title">📦 Order Status</h3>
+            <h3 className="chart-title"><Package size={14} className="inline-icon" /> Order Status</h3>
             <div className="bar-chart">
               {Object.entries(analytics.order_status).map(([status, count]) => {
                 const colors = {
@@ -281,7 +303,7 @@ function Dashboard({ connected, engine, analytics, schema }) {
       ">
         {/* Table Row Distribution */}
         <div className="chart-card">
-          <h3 className="chart-title">📊 Table Sizes</h3>
+          <h3 className="chart-title"><BarChart2 size={14} className="inline-icon" /> Table Sizes</h3>
           <div className="bar-chart horizontal">
             {tableDistribution.map(t => {
               const pct = ((t.rows / maxRows) * 100);
@@ -419,7 +441,7 @@ function SchemaBrowser({ schema }) {
               <tbody>
                 {schema[selected].columns.map(col => (
                   <tr key={col.name}>
-                    <td className={`mono ${col.is_primary_key ? 'pk-col' : ''}`}>{col.is_primary_key && '🔑 '}{col.name}</td>
+                    <td className={`mono ${col.is_primary_key ? 'pk-col' : ''}`}>{col.is_primary_key && <Key size={12} className="inline-icon" style={{ marginRight: '4px', color: 'var(--primary)' }} />}{col.name}</td>
                     <td className="mono type-col">{col.type}</td>
                     <td className={col.nullable ? 'yes-col' : 'no-col'}>{col.nullable ? 'YES' : 'NO'}</td>
                     <td>{col.is_primary_key && <span className="pk-badge">PK</span>}</td>
@@ -429,7 +451,7 @@ function SchemaBrowser({ schema }) {
             </table>
             {schema[selected].foreign_keys?.length > 0 && (
               <div className="fk-section">
-                <h4 className="fk-title">🔗 Foreign Keys</h4>
+                <h4 className="fk-title"><Link size={14} className="inline-icon" /> Foreign Keys</h4>
                 {schema[selected].foreign_keys.map((fk, i) => (
                   <div key={i} className="fk-item">{fk.from_column} → {fk.to_table}.{fk.to_column}</div>
                 ))}
@@ -437,7 +459,7 @@ function SchemaBrowser({ schema }) {
             )}
             {sampleData?.rows?.length > 0 && (
               <div className="sample-section">
-                <h4 className="sample-title">📋 Sample Data</h4>
+                <h4 className="sample-title"><Table2 size={14} className="inline-icon" /> Sample Data</h4>
                 <div className="table-scroll">
                   <table className="data-table compact">
                     <thead><tr>{sampleData.columns.map(c => <th key={c} className="mono">{c}</th>)}</tr></thead>
@@ -667,7 +689,7 @@ function DocsPanel({ schema }) {
               key={name}
               className={`docs-table-item ${selectedTable === name ? 'active' : ''}`}
               onClick={() => setSelectedTable(name)}>
-              <span className="docs-table-icon">📊</span>
+              <span className="docs-table-icon"><BarChart2 size={16} /></span>
               <span className="docs-table-name">{name}</span>
               <span className="docs-table-rows">{(schema[name]?.row_count || 0).toLocaleString()}</span>
             </div>
@@ -694,7 +716,7 @@ function DocsPanel({ schema }) {
             {/* Business Insights */}
             {currentDoc.business_insights?.length > 0 && (
               <div className="docs-section">
-                <h3 className="docs-section-title">💡 Business Insights</h3>
+                <h3 className="docs-section-title"><Lightbulb size={16} className="inline-icon" /> Business Insights</h3>
                 <div className="insights-grid">
                   {currentDoc.business_insights.map((insight, i) => (
                     <div key={i} className="insight-card">
@@ -707,7 +729,7 @@ function DocsPanel({ schema }) {
 
             {/* Column Documentation */}
             <div className="docs-section">
-              <h3 className="docs-section-title">📋 Column Documentation</h3>
+              <h3 className="docs-section-title"><FileText size={16} className="inline-icon" /> Column Documentation</h3>
               <div className="table-scroll">
                 <table className="data-table docs-table">
                   <thead>
@@ -741,7 +763,7 @@ function DocsPanel({ schema }) {
             {/* Data Quality Notes */}
             {currentDoc.data_quality_notes?.length > 0 && (
               <div className="docs-section">
-                <h3 className="docs-section-title">⚠️ Data Quality Notes</h3>
+                <h3 className="docs-section-title"><AlertTriangle size={16} className="inline-icon" /> Data Quality Notes</h3>
                 <ul className="quality-notes-list">
                   {currentDoc.data_quality_notes.map((note, i) => (
                     <li key={i}>{note}</li>
@@ -753,11 +775,21 @@ function DocsPanel({ schema }) {
             {/* Suggested Queries */}
             {currentDoc.suggested_queries?.length > 0 && (
               <div className="docs-section">
-                <h3 className="docs-section-title">🔍 Suggested Queries</h3>
+                <h3 className="docs-section-title"><Search size={16} className="inline-icon" /> Suggested Queries</h3>
                 <div className="suggested-queries">
                   {currentDoc.suggested_queries.map((query, i) => (
                     <div key={i} className="query-suggestion">
-                      <code className="mono">{query}</code>
+                      {typeof query === 'object' ? (
+                        <>
+                          <div className="query-header">
+                            <span className="query-name">{query.name}</span>
+                            <span className="query-description">{query.description}</span>
+                          </div>
+                          <code className="mono">{query.sql}</code>
+                        </>
+                      ) : (
+                        <code className="mono">{query}</code>
+                      )}
                     </div>
                   ))}
                 </div>
@@ -779,9 +811,26 @@ function DocsPanel({ schema }) {
 /*  SQL QUERY                                                                */
 /* ═══════════════════════════════════════════════════════════════════════════ */
 function SQLQuery() {
-  const [query, setQuery] = useState('SELECT o.order_status, COUNT(*) AS cnt,\n  ROUND(AVG(oi.price)::NUMERIC, 2) AS avg_price\nFROM orders o\nJOIN order_items oi ON o.order_id = oi.order_id\nGROUP BY o.order_status\nORDER BY cnt DESC');
+  const [query, setQuery] = useState('-- Connect a database and click a suggestion below to get started');
   const [result, setResult] = useState(null);
   const [running, setRunning] = useState(false);
+  const [quickQueries, setQuickQueries] = useState([]);
+  const [loadingQueries, setLoadingQueries] = useState(true);
+
+  useEffect(() => { loadSuggestions(); }, []);
+
+  async function loadSuggestions() {
+    setLoadingQueries(true);
+    try {
+      const r = await fetch(`${API}/api/query/suggestions`);
+      const d = await r.json();
+      setQuickQueries(d.suggestions || []);
+      if (d.suggestions?.length) {
+        setQuery(d.suggestions[0].sql);
+      }
+    } catch (e) { console.error('Failed to load query suggestions', e); }
+    setLoadingQueries(false);
+  }
 
   async function runQuery() {
     setRunning(true); setResult(null);
@@ -795,25 +844,23 @@ function SQLQuery() {
     setRunning(false);
   }
 
-  const quickQueries = [
-    { label: 'Top Products', sql: "SELECT p.product_name, pc.category_name_english, COUNT(*) AS orders\nFROM order_items oi\nJOIN products p ON p.product_id = oi.product_id\nJOIN product_categories pc ON pc.category_id = p.category_id\nGROUP BY p.product_name, pc.category_name_english\nORDER BY orders DESC LIMIT 10" },
-    { label: 'Revenue by State', sql: "SELECT c.state, COUNT(DISTINCT o.order_id) AS orders,\n  ROUND(SUM(oi.price)::NUMERIC, 2) AS revenue\nFROM orders o\nJOIN customers c ON c.customer_id = o.customer_id\nJOIN order_items oi ON oi.order_id = o.order_id\nGROUP BY c.state ORDER BY revenue DESC LIMIT 10" },
-    { label: 'Daily Revenue', sql: "SELECT date, total_orders, ROUND(total_revenue::NUMERIC, 2) AS revenue\nFROM analytics.daily_revenue\nORDER BY date DESC LIMIT 15" },
-    { label: 'Seller Leaderboard', sql: "SELECT s.business_name, sp.total_orders,\n  ROUND(sp.total_revenue::NUMERIC, 2) AS revenue,\n  ROUND(sp.avg_review_score::NUMERIC, 1) AS rating\nFROM analytics.seller_performance sp\nJOIN sellers s ON s.seller_id = sp.seller_id\nORDER BY sp.total_revenue DESC LIMIT 10" },
-    { label: 'Data Quality', sql: "SELECT table_name, check_type, check_result\nFROM staging.data_quality_log\nORDER BY checked_at DESC LIMIT 20" },
-    { label: 'Math: Stats', sql: "SELECT\n  COUNT(*) AS total_items,\n  ROUND(AVG(price)::NUMERIC, 2) AS mean_price,\n  ROUND(STDDEV(price)::NUMERIC, 2) AS stddev_price,\n  ROUND(PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY price)::NUMERIC, 2) AS median,\n  MIN(price) AS min_price,\n  MAX(price) AS max_price\nFROM order_items" },
-  ];
-
   return (
     <div>
       <div className="section-header">
         <h2>SQL Query Engine</h2>
-        <span className="engine-badge"><Command size={14} className="inline-icon" /> DuckDB Powered</span>
+        <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+          <span className="engine-badge"><Command size={14} className="inline-icon" /> Live Database</span>
+          <button className="secondary-btn" onClick={loadSuggestions} style={{ padding: '4px 10px', fontSize: '0.8rem' }}>
+            <RefreshCw size={12} /> Refresh Queries
+          </button>
+        </div>
       </div>
       <div className="quick-queries">
-        {quickQueries.map(qq => (
-          <button key={qq.label} className="quick-btn" onClick={() => setQuery(qq.sql)}>{qq.label}</button>
-        ))}
+        {loadingQueries ? <span style={{ fontSize: '0.85em', color: 'var(--muted-foreground)' }}>Loading dynamic queries...</span> :
+          quickQueries.length ? quickQueries.map(qq => (
+            <button key={qq.label} className="quick-btn" onClick={() => setQuery(qq.sql)}>{qq.label}</button>
+          )) : <span style={{ fontSize: '0.85em', color: 'var(--muted-foreground)' }}>Connect a database to get query suggestions</span>
+        }
       </div>
       <div className="query-editor">
         <textarea value={query} onChange={e => setQuery(e.target.value)}
@@ -911,18 +958,71 @@ function QualityDashboard({ quality, loading, onRefresh }) {
 /* ═══════════════════════════════════════════════════════════════════════════ */
 function ChatPanel() {
   const [threads, setThreads] = useState([
-    { id: 'default', title: 'New Chat', messages: [{ role: 'assistant', content: '🧬 **Neuro-Fabric Data Assistant**\n\nAsk me anything about your database! I can answer questions using SQL.\n\nTry: *"How many customers?"* or *"Show me revenue stats"*' }], createdAt: new Date() }
+    { id: 'default', title: 'New Chat', messages: [{ role: 'assistant', content: '**Neuro-Fabric Data Assistant**\n\nAsk me anything about your database. I can answer questions using SQL, analyze your schema, and reference your codebase if GitHub is connected.\n\nTry: *"How many customers?"* or *"Which tables are unused in the code?"*' }], createdAt: new Date() }
   ]);
   const [activeThread, setActiveThread] = useState('default');
   const [input, setInput] = useState('');
   const [sending, setSending] = useState(false);
+  const [thinkingPhase, setThinkingPhase] = useState(0);
+  const [phaseLabel, setPhaseLabel] = useState('');
+  const wsRef = useRef(null);
   const endRef = useRef(null);
+  const activeThreadRef = useRef(activeThread);
+
+  // Keep a ref in sync so WS callbacks access the latest thread
+  useEffect(() => { activeThreadRef.current = activeThread; }, [activeThread]);
 
   const messages = threads.find(t => t.id === activeThread)?.messages || [];
 
-  useEffect(() => { endRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [messages]);
+  useEffect(() => { endRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [messages, thinkingPhase]);
 
-  async function send() {
+  // WebSocket connection management
+  useEffect(() => {
+    function connect() {
+      const wsUrl = API.replace('http', 'ws') + '/ws/chat';
+      const socket = new WebSocket(wsUrl);
+
+      socket.onopen = () => { console.log('WS Chat connected'); };
+
+      socket.onmessage = (event) => {
+        try {
+          const data = JSON.parse(event.data);
+          if (data.type === 'phase') {
+            setThinkingPhase(data.phase);
+            setPhaseLabel(data.label || '');
+          } else if (data.type === 'response') {
+            setThreads(prev => prev.map(t =>
+              t.id === activeThreadRef.current
+                ? { ...t, messages: [...t.messages, { role: 'assistant', content: data.content }] }
+                : t
+            ));
+            setSending(false);
+          } else if (data.type === 'error') {
+            setThreads(prev => prev.map(t =>
+              t.id === activeThreadRef.current
+                ? { ...t, messages: [...t.messages, { role: 'assistant', content: `Error: ${data.content}` }] }
+                : t
+            ));
+            setSending(false);
+          }
+        } catch (e) { console.error('WS parse error', e); }
+      };
+
+      socket.onclose = () => {
+        console.log('WS Chat disconnected, reconnecting...');
+        setTimeout(connect, 2000);
+      };
+
+      socket.onerror = (e) => { console.error('WS error', e); };
+
+      wsRef.current = socket;
+    }
+
+    connect();
+    return () => { wsRef.current?.close(); };
+  }, []);
+
+  function send() {
     if (!input.trim() || sending) return;
     const msg = input.trim();
     setInput('');
@@ -932,27 +1032,38 @@ function ChatPanel() {
         : t
     ));
     setSending(true);
-    try {
-      const r = await fetch(`${API}/api/chat`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ message: msg }) });
-      const d = await r.json();
-      setThreads(prev => prev.map(t =>
-        t.id === activeThread
-          ? { ...t, messages: [...t.messages, { role: 'assistant', content: d.response }] }
-          : t
-      ));
-    } catch (e) {
-      setThreads(prev => prev.map(t =>
-        t.id === activeThread
-          ? { ...t, messages: [...t.messages, { role: 'assistant', content: `Error: ${e.message}` }] }
-          : t
-      ));
+    setThinkingPhase(0);
+    setPhaseLabel('Connecting...');
+
+    // Send via WebSocket, fallback to HTTP if WS not ready
+    if (wsRef.current?.readyState === WebSocket.OPEN) {
+      wsRef.current.send(JSON.stringify({ message: msg }));
+    } else {
+      // HTTP fallback
+      (async () => {
+        try {
+          const r = await fetch(`${API}/api/chat`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ message: msg }) });
+          const d = await r.json();
+          setThreads(prev => prev.map(t =>
+            t.id === activeThread
+              ? { ...t, messages: [...t.messages, { role: 'assistant', content: d.response }] }
+              : t
+          ));
+        } catch (e) {
+          setThreads(prev => prev.map(t =>
+            t.id === activeThread
+              ? { ...t, messages: [...t.messages, { role: 'assistant', content: `Error: ${e.message}` }] }
+              : t
+          ));
+        }
+        setSending(false);
+      })();
     }
-    setSending(false);
   }
 
   function newChat() {
     const id = `chat_${Date.now()}`;
-    setThreads(prev => [{ id, title: 'New Chat', messages: [{ role: 'assistant', content: '🧬 **Neuro-Fabric Data Assistant**\n\nHow can I help you analyze your data today?' }], createdAt: new Date() }, ...prev]);
+    setThreads(prev => [{ id, title: 'New Chat', messages: [{ role: 'assistant', content: '**Neuro-Fabric Data Assistant**\n\nHow can I help you analyze your data today?' }], createdAt: new Date() }, ...prev]);
     setActiveThread(id);
   }
 
@@ -979,7 +1090,7 @@ function ChatPanel() {
             <div key={thread.id}
               className={`chat-history-item ${activeThread === thread.id ? 'active' : ''}`}
               onClick={() => setActiveThread(thread.id)}>
-              <span className="chat-history-icon">💬</span>
+              <span className="chat-history-icon"><MessageCircle size={14} /></span>
               <span className="chat-history-title">{thread.title}</span>
               <div className="chat-history-actions">
                 <button className="chat-action-btn" onClick={(e) => { e.stopPropagation(); deleteThread(thread.id); }}><Trash2 size={16} /></button>
@@ -1029,10 +1140,20 @@ function ChatPanel() {
             <div className="chat-message assistant">
               <div className="chat-avatar assistant"><Brain size={16} /></div>
               <div className="chat-content">
-                <div className="typing-indicator">
-                  <div className="typing-dot"></div>
-                  <div className="typing-dot"></div>
-                  <div className="typing-dot"></div>
+                <div className="thinking-steps">
+                  {[
+                    { icon: <Database size={14} />, label: 'Checking database schema...' },
+                    { icon: <Search size={14} />, label: 'Analyzing your query...' },
+                    { icon: <FileText size={14} />, label: 'Reviewing code context...' },
+                    { icon: <Brain size={14} />, label: 'Generating response...' },
+                  ].map((step, i) => (
+                    <div key={i} className={`thinking-step ${i <= thinkingPhase ? 'active' : ''} ${i === thinkingPhase ? 'current' : ''}`}>
+                      <span className="thinking-step-icon">{step.icon}</span>
+                      <span className="thinking-step-label">{step.label}</span>
+                      {i < thinkingPhase && <Check size={12} style={{ color: '#10b981', marginLeft: '4px' }} />}
+                      {i === thinkingPhase && <span className="thinking-pulse"></span>}
+                    </div>
+                  ))}
                 </div>
               </div>
             </div>
@@ -1096,14 +1217,89 @@ function MarkdownRenderer({ content }) {
 }
 
 function renderInline(text, key) {
-  // Bold
-  text = text.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
-  // Italic
-  text = text.replace(/\*(.*?)\*/g, '<em>$1</em>');
-  // Inline code
-  text = text.replace(/`([^`]+)`/g, '<code>$1</code>');
+  // Split by lines for block-level processing
+  const lines = text.split('\n');
+  const elements = [];
+  let listBuffer = [];
+  let inList = false;
+  let listKey = 0;
 
-  return <span key={key} dangerouslySetInnerHTML={{ __html: text.replace(/\n/g, '<br/>') }} />;
+  function flushList() {
+    if (listBuffer.length > 0) {
+      elements.push(
+        <ul key={`list-${listKey++}`} style={{ margin: '8px 0', paddingLeft: '20px', listStyle: 'disc' }}>
+          {listBuffer.map((item, i) => <li key={i} dangerouslySetInnerHTML={{ __html: formatLine(item) }} style={{ marginBottom: '4px', lineHeight: 1.6 }} />)}
+        </ul>
+      );
+      listBuffer = [];
+      inList = false;
+    }
+  }
+
+  function formatLine(line) {
+    // Bold
+    line = line.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
+    // Italic
+    line = line.replace(/(?<![*])\*([^*]+)\*(?![*])/g, '<em>$1</em>');
+    // Inline code
+    line = line.replace(/`([^`]+)`/g, '<code style="background:rgba(99,102,241,0.15);padding:2px 6px;border-radius:4px;font-size:0.9em">$1</code>');
+    return line;
+  }
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    const trimmed = line.trim();
+
+    // Headings
+    if (trimmed.startsWith('### ')) {
+      flushList();
+      elements.push(<h4 key={`h-${i}`} style={{ margin: '16px 0 8px', fontSize: '1em', fontWeight: 700, color: 'var(--foreground)' }} dangerouslySetInnerHTML={{ __html: formatLine(trimmed.slice(4)) }} />);
+    } else if (trimmed.startsWith('## ')) {
+      flushList();
+      elements.push(<h3 key={`h-${i}`} style={{ margin: '20px 0 10px', fontSize: '1.1em', fontWeight: 700, color: 'var(--foreground)' }} dangerouslySetInnerHTML={{ __html: formatLine(trimmed.slice(3)) }} />);
+    } else if (trimmed.startsWith('# ')) {
+      flushList();
+      elements.push(<h2 key={`h-${i}`} style={{ margin: '24px 0 12px', fontSize: '1.2em', fontWeight: 700, color: 'var(--foreground)' }} dangerouslySetInnerHTML={{ __html: formatLine(trimmed.slice(2)) }} />);
+    }
+    // Horizontal rule
+    else if (trimmed === '---' || trimmed === '***') {
+      flushList();
+      elements.push(<hr key={`hr-${i}`} style={{ border: 'none', borderTop: '1px solid var(--border)', margin: '16px 0' }} />);
+    }
+    // Bullet lists
+    else if (/^[\*\-•]\s/.test(trimmed)) {
+      inList = true;
+      listBuffer.push(trimmed.replace(/^[\*\-•]\s/, ''));
+    }
+    // Numbered lists
+    else if (/^\d+\.\s/.test(trimmed)) {
+      flushList();
+      // Collect sequential numbered items
+      const numItems = [trimmed.replace(/^\d+\.\s/, '')];
+      while (i + 1 < lines.length && /^\d+\.\s/.test(lines[i + 1].trim())) {
+        i++;
+        numItems.push(lines[i].trim().replace(/^\d+\.\s/, ''));
+      }
+      elements.push(
+        <ol key={`ol-${i}`} style={{ margin: '8px 0', paddingLeft: '20px' }}>
+          {numItems.map((item, j) => <li key={j} dangerouslySetInnerHTML={{ __html: formatLine(item) }} style={{ marginBottom: '4px', lineHeight: 1.6 }} />)}
+        </ol>
+      );
+    }
+    // Empty line
+    else if (trimmed === '') {
+      flushList();
+      elements.push(<div key={`br-${i}`} style={{ height: '8px' }} />);
+    }
+    // Normal text
+    else {
+      flushList();
+      elements.push(<p key={`p-${i}`} style={{ margin: '4px 0', lineHeight: 1.7 }} dangerouslySetInnerHTML={{ __html: formatLine(trimmed) }} />);
+    }
+  }
+  flushList();
+
+  return <div key={key}>{elements}</div>;
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════ */
@@ -1133,125 +1329,209 @@ function ArtifactsPanel() {
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════ */
-/*  LINEAGE PANEL (Neo4j)                                                      */
+/*  LINEAGE PANEL (In-Memory FK Graph + ER Diagram)                            */
 /* ═══════════════════════════════════════════════════════════════════════════ */
 function LineagePanel() {
-  const [status, setStatus] = useState(null);
   const [graph, setGraph] = useState(null);
-  const [syncing, setSyncing] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+  const [view, setView] = useState('graph'); // 'graph' or 'er'
+  const [erDiagram, setErDiagram] = useState(null);
+  const [erLoading, setErLoading] = useState(false);
+  const [showCode, setShowCode] = useState(false);
+  const mermaidRef = useRef(null);
 
-  useEffect(() => { loadStatus(); }, []);
+  useEffect(() => { loadGraph(); }, []);
 
-  async function loadStatus() {
-    try {
-      const r = await fetch(`${API}/api/neo4j/status`);
-      const s = await r.json();
-      setStatus(s);
-      if (s.available) loadGraph();
-    } catch (e) {
-      setStatus({ available: false, error: e.message });
+  // Render mermaid diagram whenever erDiagram changes and view is 'er'
+  useEffect(() => {
+    if (view === 'er' && erDiagram?.mermaid && mermaidRef.current && !showCode) {
+      const renderDiagram = async () => {
+        try {
+          const id = 'er-diagram-' + Date.now();
+          const { svg } = await mermaid.render(id, erDiagram.mermaid);
+          if (mermaidRef.current) {
+            mermaidRef.current.innerHTML = svg;
+            // Make the SVG responsive
+            const svgEl = mermaidRef.current.querySelector('svg');
+            if (svgEl) {
+              svgEl.style.maxWidth = '100%';
+              svgEl.style.height = 'auto';
+              svgEl.style.minHeight = '400px';
+            }
+          }
+        } catch (e) {
+          console.error('Mermaid render error:', e);
+          if (mermaidRef.current) {
+            mermaidRef.current.innerHTML = '<p style="color:#ef4444;padding:16px">Failed to render diagram. Try "Show Code" to see the raw Mermaid syntax.</p>';
+          }
+        }
+      };
+      renderDiagram();
     }
-  }
+  }, [erDiagram, view, showCode]);
 
   async function loadGraph() {
+    setLoading(true);
+    setError('');
     try {
-      const r = await fetch(`${API}/api/neo4j/graph`);
-      setGraph(await r.json());
-    } catch (e) { console.error('Failed to load neo4j graph', e); }
+      const r = await fetch(`${API}/api/lineage/graph`);
+      const data = await r.json();
+      if (data.error) setError(data.error);
+      else setGraph(data);
+    } catch (e) {
+      setError(e.message);
+    }
+    setLoading(false);
   }
 
-  async function handleSync() {
-    setSyncing(true);
+  async function loadER() {
+    setErLoading(true);
     try {
-      const r = await fetch(`${API}/api/neo4j/sync`, { method: 'POST' });
-      await r.json();
-      await loadGraph();
-    } catch (e) { console.error('Sync failed', e); }
-    setSyncing(false);
+      const r = await fetch(`${API}/api/lineage/er-diagram`);
+      const data = await r.json();
+      setErDiagram(data);
+    } catch (e) {
+      console.error('Failed to load ER diagram', e);
+    }
+    setErLoading(false);
   }
 
-  if (!status) return <div className="loading-state">Checking Neo4j connection...</div>;
+  function handleViewToggle(v) {
+    setView(v);
+    if (v === 'er' && !erDiagram) loadER();
+  }
+
+  if (loading) return <div className="loading-state">Building lineage graph from schema...</div>;
 
   return (
     <div className="card">
       <div className="card-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <h2 className="card-title">Data Lineage (Neo4j)</h2>
         <div>
-          {status.available ? (
-            <span className="status-badge connected"><span className="status-dot"></span> Connected to Neo4j</span>
-          ) : (
-            <span className="status-badge disconnected"><span className="status-dot"></span> Neo4j Disconnected</span>
-          )}
-          <button className="primary-btn" onClick={handleSync} disabled={!status.available || syncing} style={{ marginLeft: '12px' }}>
-            {syncing ? 'Syncing...' : 'Sync Schema to Graph'}
+          <h2 className="card-title">Data Lineage</h2>
+          <p className="card-subtitle">{graph ? `${graph.table_count || graph.nodes?.length || 0} tables · ${graph.relationship_count || graph.edges?.length || 0} FK relationships` : 'No data'}</p>
+        </div>
+        <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+          <div style={{ display: 'flex', background: 'var(--muted)', borderRadius: '6px', overflow: 'hidden', border: '1px solid var(--border)' }}>
+            <button onClick={() => handleViewToggle('graph')} style={{ padding: '6px 14px', fontSize: '0.8rem', fontWeight: 600, border: 'none', cursor: 'pointer', background: view === 'graph' ? 'var(--primary)' : 'transparent', color: view === 'graph' ? 'white' : 'var(--muted-foreground)' }}>Graph</button>
+            <button onClick={() => handleViewToggle('er')} style={{ padding: '6px 14px', fontSize: '0.8rem', fontWeight: 600, border: 'none', cursor: 'pointer', background: view === 'er' ? 'var(--primary)' : 'transparent', color: view === 'er' ? 'white' : 'var(--muted-foreground)' }}>ER Diagram</button>
+          </div>
+          <button className="primary-btn" onClick={() => { loadGraph(); if (view === 'er') loadER(); }} style={{ marginLeft: '4px' }}>
+            <RefreshCw size={14} /> Refresh
           </button>
         </div>
       </div>
 
-      {!status.available ? (
-        <div className="empty-state">
-          <p>Neo4j connection not available.</p>
-          <p>Please ensure you have a local Neo4j or Aura instance running and the appropriate environment variables set: NEO4J_URI, NEO4J_USER, NEO4J_PASSWORD.</p>
+      {error ? (
+        <div className="empty-state" style={{ color: '#ef4444' }}>
+          <p>Failed to build lineage graph: {error}</p>
+          <p>Ensure a database is connected and schema is loaded.</p>
         </div>
-      ) : graph && !graph.nodes?.length ? (
-        <div className="empty-state">
-          Graph is empty. Click 'Sync Schema to Graph' to push metadata to Neo4j.
-        </div>
-      ) : (
-        <div className="lineage-graph-container" style={{ background: '#f8fafc', padding: '24px', borderRadius: '8px', border: '1px solid #e2e8f0', display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '16px' }}>
-          {graph?.nodes?.map(node => (
-            <div key={node.id} style={{ background: 'white', padding: '16px', borderRadius: '8px', boxShadow: '0 1px 3px rgba(0,0,0,0.1)', border: '1px solid #e2e8f0' }}>
-              <div style={{ fontWeight: 600, color: '#4f46e5', marginBottom: '8px', fontSize: '1.1em' }}>{node.label}</div>
-              <div className="artifact-meta">Schema: {node.schema} | Rows: {node.row_count}</div>
-              <div style={{ marginTop: '12px' }}>
-                <div style={{ fontSize: '0.85em', color: '#64748b', fontWeight: 600, marginBottom: '4px' }}>RELATIONSHIPS</div>
-                {graph.edges.filter(e => e.source === node.id).map((e, i) => (
-                  <div key={i} style={{ fontSize: '0.9em', color: '#334155', padding: '4px 0', borderBottom: '1px solid #f1f5f9' }}>
-                    → {e.target} <span style={{ color: '#94a3b8', fontSize: '0.85em' }}>({e.label})</span>
-                  </div>
-                ))}
-                {graph.edges.filter(e => e.source === node.id).length === 0 && (
-                  <div style={{ fontSize: '0.9em', color: '#94a3b8', fontStyle: 'italic' }}>No outgoing references</div>
-                )}
+      ) : view === 'er' ? (
+        /* ── ER Diagram View ── */
+        erLoading ? <div className="loading-state">Generating ER diagram...</div> : erDiagram ? (
+          <div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
+              <span style={{ fontSize: '0.85em', color: 'var(--muted-foreground)' }}>{erDiagram.table_count} tables · {erDiagram.relationship_count} relationships</span>
+              <div style={{ display: 'flex', gap: '8px' }}>
+                <button className="secondary-btn" onClick={() => setShowCode(!showCode)} style={{ fontSize: '0.8rem', padding: '4px 12px' }}>
+                  {showCode ? <><BarChart2 size={12} className="inline-icon" /> Show Diagram</> : <><FileText size={12} className="inline-icon" /> Show Code</>}
+                </button>
+                <button className="secondary-btn" onClick={() => { navigator.clipboard.writeText(erDiagram.mermaid); }} style={{ fontSize: '0.8rem', padding: '4px 12px' }}>
+                  <FileText size={12} className="inline-icon" /> Copy Mermaid
+                </button>
               </div>
             </div>
-          ))}
-        </div>
+            {showCode ? (
+              <div style={{ background: '#0f172a', color: '#e2e8f0', padding: '20px', borderRadius: '8px', fontFamily: 'monospace', fontSize: '0.8rem', lineHeight: 1.6, overflowX: 'auto', whiteSpace: 'pre', maxHeight: '600px', overflow: 'auto' }}>
+                {erDiagram.mermaid}
+              </div>
+            ) : (
+              <div ref={mermaidRef} style={{ background: '#0f172a', padding: '24px', borderRadius: '8px', overflow: 'auto', minHeight: '300px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <div className="loading-state" style={{ color: '#94a3b8' }}>Rendering diagram...</div>
+              </div>
+            )}
+          </div>
+        ) : <div className="empty-state">Failed to load ER diagram.</div>
+      ) : (
+        /* ── Graph View ── */
+        !graph?.nodes?.length ? (
+          <div className="empty-state">
+            No tables found. Connect a database and load the schema first.
+          </div>
+        ) : (
+          <div className="lineage-graph-container" style={{ background: 'var(--muted)', padding: '24px', borderRadius: '8px', border: '1px solid var(--border)', display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '16px' }}>
+            {graph.nodes.map(node => (
+              <div key={node.id} style={{ background: 'var(--card)', padding: '16px', borderRadius: '8px', boxShadow: '0 1px 3px rgba(0,0,0,0.1)', border: '1px solid var(--border)' }}>
+                <div style={{ fontWeight: 600, color: 'var(--primary)', marginBottom: '4px', fontSize: '1em' }}>{node.label}</div>
+                <div className="artifact-meta">Schema: {node.schema} · Rows: {typeof node.row_count === 'number' ? node.row_count.toLocaleString() : node.row_count} · Cols: {node.column_count || '?'}</div>
+                <div style={{ marginTop: '12px' }}>
+                  <div style={{ fontSize: '0.8em', color: 'var(--muted-foreground)', fontWeight: 600, marginBottom: '4px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>References →</div>
+                  {graph.edges.filter(e => e.source === node.id).map((e, i) => (
+                    <div key={i} style={{ fontSize: '0.875em', color: 'var(--foreground)', padding: '4px 0', borderBottom: '1px solid var(--border)' }}>
+                      → {e.target} <span style={{ color: 'var(--muted-foreground)', fontSize: '0.85em' }}>({e.label})</span>
+                    </div>
+                  ))}
+                  {graph.edges.filter(e => e.target === node.id).map((e, i) => (
+                    <div key={`in-${i}`} style={{ fontSize: '0.875em', color: 'var(--foreground)', padding: '4px 0', borderBottom: '1px solid var(--border)' }}>
+                      ← {e.source} <span style={{ color: 'var(--muted-foreground)', fontSize: '0.85em' }}>({e.label})</span>
+                    </div>
+                  ))}
+                  {graph.edges.filter(e => e.source === node.id || e.target === node.id).length === 0 && (
+                    <div style={{ fontSize: '0.875em', color: 'var(--muted-foreground)', fontStyle: 'italic' }}>No references</div>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        )
       )}
     </div>
   );
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════ */
-/*  GITHUB PANEL                                                               */
+/*  GITHUB PANEL (localStorage-based)                                          */
 /* ═══════════════════════════════════════════════════════════════════════════ */
 function GitHubPanel() {
-  const [status, setStatus] = useState(null);
   const [prs, setPrs] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+  const [scanResult, setScanResult] = useState(null);
 
-  useEffect(() => { loadStatus(); }, []);
+  const token = localStorage.getItem('nf_github_token') || '';
+  const repo = localStorage.getItem('nf_github_repo') || '';
+  const configured = Boolean(token && repo);
 
-  async function loadStatus() {
-    try {
-      const r = await fetch(`${API}/api/github/status`);
-      const s = await r.json();
-      setStatus(s);
-      if (s.configured) loadPrs();
-      else setLoading(false);
-    } catch (e) {
-      setStatus({ configured: false, error: e.message });
+  useEffect(() => {
+    if (configured) {
+      loadPrs();
+      scanRepo();
+    } else {
       setLoading(false);
     }
-  }
+  }, []);
 
   async function loadPrs() {
+    setLoading(true);
+    setError('');
     try {
-      const r = await fetch(`${API}/api/github/prs`);
+      const params = new URLSearchParams({ token, repo, state: 'all', per_page: '15' });
+      const r = await fetch(`${API}/api/github/prs?${params}`);
       const d = await r.json();
+      if (d.error) setError(d.error);
       setPrs(d.prs || []);
-    } catch (e) { console.error('Failed to load GitHub PRs', e); }
+    } catch (e) { setError(e.message); }
     setLoading(false);
+  }
+
+  async function scanRepo() {
+    try {
+      const params = new URLSearchParams({ token, repo });
+      const r = await fetch(`${API}/api/github/scan?${params}`);
+      const d = await r.json();
+      if (!d.error) setScanResult(d);
+    } catch (e) { console.error('Failed to scan repo', e); }
   }
 
   if (loading) return <div className="loading-state">Loading GitHub integration...</div>;
@@ -1260,25 +1540,50 @@ function GitHubPanel() {
     <div className="card">
       <div className="card-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <h2 className="card-title">GitHub Integration</h2>
-        <div>
-          {status?.configured ? (
-            <span className="status-badge connected"><span className="status-dot"></span> Webhook Ready ({status.repo})</span>
+        <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+          {configured ? (
+            <span className="status-badge connected"><span className="status-dot"></span> {repo}</span>
           ) : (
             <span className="status-badge disconnected"><span className="status-dot"></span> Not Configured</span>
+          )}
+          {scanResult && (
+            <span className="status-badge connected" style={{ background: 'rgba(16, 185, 129, 0.1)', color: '#10b981', border: '1px solid rgba(16, 185, 129, 0.3)' }}>
+              <FileText size={12} style={{ marginRight: '4px' }} /> {scanResult.file_count} files indexed
+            </span>
+          )}
+          {configured && (
+            <button className="primary-btn" onClick={() => { loadPrs(); scanRepo(); }} style={{ marginLeft: '8px' }}>
+              <RefreshCw size={14} /> Refresh
+            </button>
           )}
         </div>
       </div>
 
-      {!status?.configured ? (
+      {!configured ? (
         <div className="empty-state">
-          <p>GitHub Webhook is not configured.</p>
-          <p>Please set GITHUB_TOKEN and GITHUB_REPO environment variables to enable PR monitoring and automated documentation updates.</p>
+          <p>GitHub Integration not configured.</p>
+          <p>Go to <strong>Settings</strong> and enter your GitHub <strong>Repository</strong> (owner/repo) and <strong>Personal Access Token</strong> to enable PR monitoring and code-aware AI chat.</p>
+        </div>
+      ) : error ? (
+        <div className="empty-state" style={{ color: '#ef4444' }}>
+          <p>Error loading PRs: {error}</p>
         </div>
       ) : (
         <div>
-          <div style={{ marginBottom: '24px', padding: '16px', background: '#eff6ff', borderRadius: '8px', border: '1px solid #bfdbfe' }}>
-            <h3 style={{ margin: '0 0 8px 0', color: '#1e40af', fontSize: '1em', display: 'flex', alignItems: 'center', gap: '8px' }}><Info size={16} /> Webhook Auto-Generation</h3>
-            <p style={{ margin: 0, color: '#1e3a8a', fontSize: '0.95em', lineHeight: 1.5 }}>
+          {scanResult && (
+            <div style={{ marginBottom: '16px', padding: '16px', background: 'rgba(16, 185, 129, 0.05)', borderRadius: '8px', border: '1px solid rgba(16, 185, 129, 0.2)' }}>
+              <h3 style={{ margin: '0 0 8px 0', color: '#10b981', fontSize: '1em', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <CheckCircle2 size={16} /> Code Context Active
+              </h3>
+              <p style={{ margin: 0, color: 'var(--muted-foreground)', fontSize: '0.9em', lineHeight: 1.5 }}>
+                {scanResult.file_count} code files from <strong>{repo}</strong> have been indexed. The AI Chat can now reference your codebase to answer questions like <em>"which tables are used in the code"</em> or <em>"which tables are not needed"</em>.
+              </p>
+            </div>
+          )}
+
+          <div style={{ marginBottom: '24px', padding: '16px', background: 'var(--muted)', borderRadius: '8px', border: '1px solid var(--border)' }}>
+            <h3 style={{ margin: '0 0 8px 0', color: 'var(--primary)', fontSize: '1em', display: 'flex', alignItems: 'center', gap: '8px' }}><Info size={16} /> Webhook Auto-Generation</h3>
+            <p style={{ margin: 0, color: 'var(--muted-foreground)', fontSize: '0.95em', lineHeight: 1.5 }}>
               Neuro-Fabric listens for merged Pull Requests onto the <strong>dev</strong> branch. When a PR is merged, we scan for modified `.sql` and `.py` files and automatically regenerate AI documentation for affected tables.
             </p>
           </div>
@@ -1313,12 +1618,12 @@ function GitHubPanel() {
                     <td>{pr.author}</td>
                     <td>{new Date(pr.updated_at).toLocaleDateString()}</td>
                     <td>
-                      <a href={pr.url} target="_blank" rel="noopener noreferrer" style={{ color: '#4f46e5', textDecoration: 'none', fontWeight: 500 }}>View on GitHub</a>
+                      <a href={pr.url} target="_blank" rel="noopener noreferrer" style={{ color: 'var(--primary)', textDecoration: 'none', fontWeight: 500 }}>View on GitHub</a>
                     </td>
                   </tr>
                 ))}
                 {!prs.length && (
-                  <tr><td colSpan="6" style={{ textAlign: 'center', padding: '32px', color: '#64748b' }}>No recent PRs found for {status.repo}</td></tr>
+                  <tr><td colSpan="6" style={{ textAlign: 'center', padding: '32px', color: 'var(--muted-foreground)' }}>No recent PRs found for {repo}</td></tr>
                 )}
               </tbody>
             </table>
@@ -1334,11 +1639,8 @@ function GitHubPanel() {
 /* ═══════════════════════════════════════════════════════════════════════════ */
 function SettingsPanel({ onConnect, connected, currentEngine }) {
   const [dbUrl, setDbUrl] = useState('');
-  const [neo4jUri, setNeo4jUri] = useState('');
-  const [neo4jUser, setNeo4jUser] = useState('');
-  const [neo4jPass, setNeo4jPass] = useState('');
-  const [gitToken, setGitToken] = useState('');
-  const [gitRepo, setGitRepo] = useState('');
+  const [gitToken, setGitToken] = useState(localStorage.getItem('nf_github_token') || '');
+  const [gitRepo, setGitRepo] = useState(localStorage.getItem('nf_github_repo') || '');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
@@ -1355,14 +1657,13 @@ function SettingsPanel({ onConnect, connected, currentEngine }) {
     setError('');
     setSuccess('');
 
+    // Persist GitHub settings to localStorage
+    localStorage.setItem('nf_github_token', gitToken);
+    localStorage.setItem('nf_github_repo', gitRepo);
+
     try {
       const payload = {
         db_url: dbUrl,
-        neo4j_uri: neo4jUri,
-        neo4j_user: neo4jUser,
-        neo4j_password: neo4jPass,
-        github_token: gitToken,
-        github_repo: gitRepo
       };
 
       const r = await fetch(`${API}/api/settings/connect`, {
@@ -1374,10 +1675,10 @@ function SettingsPanel({ onConnect, connected, currentEngine }) {
       const d = await r.json();
 
       if (d.connected) {
-        setSuccess(d.message);
+        setSuccess(d.message + (gitRepo ? ` · GitHub: ${gitRepo}` : ''));
         onConnect(true, d.engine);
       } else if (!dbUrl) {
-        setSuccess('Settings saved. (No Database connected).');
+        setSuccess('Settings saved.' + (gitRepo ? ` GitHub: ${gitRepo}` : ''));
         onConnect(false, '');
       } else {
         setError(d.message);
@@ -1417,7 +1718,7 @@ function SettingsPanel({ onConnect, connected, currentEngine }) {
           <div className="card-header" style={{ display: 'flex', justifyContent: 'space-between' }}>
             <div>
               <h3 className="card-title">Database Connection</h3>
-              <p className="card-subtitle">Connect your PostgreSQL, DuckDB, or Snowflake instance.</p>
+              <p className="card-subtitle">Connect your PostgreSQL or Snowflake instance.</p>
             </div>
             {connected && (
               <span className="status-badge connected"><span className="status-dot"></span> {currentEngine.toUpperCase()} CONNECTED</span>
@@ -1435,7 +1736,6 @@ function SettingsPanel({ onConnect, connected, currentEngine }) {
             />
             <div style={{ fontSize: '0.8rem', color: '#64748b', marginTop: '6px', display: 'flex', gap: '8px' }}>
               <span>Examples: </span>
-              <button type="button" style={{ background: 'none', border: 'none', color: '#6366f1', cursor: 'pointer', textDecoration: 'underline' }} onClick={() => setDbUrl(examples.duckdb)}>DuckDB</button>
               <button type="button" style={{ background: 'none', border: 'none', color: '#6366f1', cursor: 'pointer', textDecoration: 'underline' }} onClick={() => setDbUrl(examples.supabase)}>Supabase</button>
             </div>
           </div>
@@ -1447,27 +1747,7 @@ function SettingsPanel({ onConnect, connected, currentEngine }) {
           )}
         </div>
 
-        {/* Neo4j Integration */}
-        <div className="card">
-          <div className="card-header">
-            <h3 className="card-title">Neo4j Integration</h3>
-            <p className="card-subtitle">Required for Data Lineage graph visualizations.</p>
-          </div>
-          <div className="input-group">
-            <label className="input-label">Neo4j URI</label>
-            <input type="text" className="text-input" placeholder="neo4j+s://xxxx.databases.neo4j.io" value={neo4jUri} onChange={e => setNeo4jUri(e.target.value)} />
-          </div>
-          <div className="grid-2">
-            <div className="input-group">
-              <label className="input-label">Username</label>
-              <input type="text" className="text-input" placeholder="neo4j" value={neo4jUser} onChange={e => setNeo4jUser(e.target.value)} />
-            </div>
-            <div className="input-group">
-              <label className="input-label">Password</label>
-              <input type="password" className="text-input" placeholder="••••••••" value={neo4jPass} onChange={e => setNeo4jPass(e.target.value)} />
-            </div>
-          </div>
-        </div>
+
 
         {/* GitHub Webhook */}
         <div className="card">

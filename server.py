@@ -477,6 +477,19 @@ Format as JSON with keys: business_summary, column_descriptions (object), usage_
                 }
         
         pipeline_state["documentation"] = docs
+        
+        # Auto-save docs to outputs/ directory for Artifacts panel
+        try:
+            OUTPUTS_DIR.mkdir(parents=True, exist_ok=True)
+            from datetime import datetime
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            artifact_path = OUTPUTS_DIR / f"ai_documentation_{timestamp}.json"
+            with open(artifact_path, "w") as f:
+                json.dump(docs, f, indent=2, default=str)
+            logger.info(f"Saved documentation artifact to {artifact_path}")
+        except Exception as save_err:
+            logger.warning(f"Failed to save docs artifact: {save_err}")
+        
         return {"success": True, "tables": len(docs)}
     except Exception as e:
         logger.error("Generate docs failed: %s", e)
@@ -638,8 +651,9 @@ async def execute_query(req: SQLRequest):
         sql_up = req.query.strip().upper()
         if any(k in sql_up for k in ["DROP ", "TRUNCATE ", "ALTER ", "DELETE ", "INSERT ", "UPDATE "]):
             return {"error": "Write operations disabled.", "rows": [], "columns": []}
+        from sqlalchemy import text as sa_text
         with engine.connect() as conn:
-            result = conn.execute(req.query)
+            result = conn.execute(sa_text(req.query))
             columns = result.keys() if hasattr(result, 'keys') else []
             rows = result.fetchmany(req.limit)
             data = [{c: _ser_val(v) for c, v in zip(columns, r)} for r in rows]
@@ -866,10 +880,29 @@ async def chat(req: ChatRequest):
     if not GOOGLE_API_KEY:
         return _smart_chat(req.message)
     try:
-        from langchain_core.messages import HumanMessage
+        from langchain_core.messages import HumanMessage, SystemMessage
         from agents.supervisor import get_chat_app
         chat_app = get_chat_app()
-        inp = {"messages": [HumanMessage(content=req.message)],
+        
+        # Build the message with optional code context
+        user_content = req.message
+        code_ctx = _github_code_cache.get("context", "")
+        
+        messages = []
+        if code_ctx:
+            system_prompt = (
+                f"You are Neuro-Fabric, an AI data engineer assistant. "
+                f"The user has connected their GitHub repository ({_github_code_cache.get('repo', '')}) "
+                f"which contains the following code files. Use this code to give better answers "
+                f"about which database tables are actually used in the application, which are unused, "
+                f"how the data flows through the code, and any code-level insights.\n\n"
+                f"=== REPOSITORY CODE ===\n{code_ctx[:15000]}\n=== END CODE ==="
+            )
+            messages.append(SystemMessage(content=system_prompt))
+        
+        messages.append(HumanMessage(content=user_content))
+        
+        inp = {"messages": messages,
                "db_config": {"url": "", "name": "database"},
                "schema": pipeline_state.get("schema", {}),
                "quality_report": pipeline_state.get("quality_report", {}),
@@ -886,6 +919,104 @@ async def chat(req: ChatRequest):
         logger.error("Chat LLM failed: %s", e)
         return _smart_chat(req.message)
 
+
+# ── WebSocket Chat (Real-Time Streaming) ─────────────────────────────────────
+from fastapi import WebSocket, WebSocketDisconnect
+
+@app.websocket("/ws/chat")
+async def ws_chat(ws: WebSocket):
+    """WebSocket endpoint for real-time chat with streaming progress phases."""
+    global chat_thread_id
+    await ws.accept()
+    
+    try:
+        while True:
+            data = await ws.receive_json()
+            msg = data.get("message", "").strip()
+            if not msg:
+                await ws.send_json({"type": "error", "content": "Empty message"})
+                continue
+            
+            # Phase 1: Checking schema
+            await ws.send_json({"type": "phase", "phase": 0, "label": "Checking database schema..."})
+            
+            from core.config import GOOGLE_API_KEY
+            
+            if not GOOGLE_API_KEY:
+                # Fallback to smart chat (no streaming needed)
+                await ws.send_json({"type": "phase", "phase": 1, "label": "Analyzing your query..."})
+                result = _smart_chat(msg)
+                await ws.send_json({"type": "phase", "phase": 3, "label": "Generating response..."})
+                await ws.send_json({"type": "response", "content": result.get("response", "No response.")})
+                continue
+            
+            try:
+                import asyncio
+                from langchain_core.messages import HumanMessage, SystemMessage
+                from agents.supervisor import get_chat_app
+                
+                # Phase 2: Analyzing query
+                await ws.send_json({"type": "phase", "phase": 1, "label": "Analyzing your query..."})
+                
+                chat_app = get_chat_app()
+                code_ctx = _github_code_cache.get("context", "")
+                
+                messages = []
+                if code_ctx:
+                    # Phase 3: Reviewing code
+                    await ws.send_json({"type": "phase", "phase": 2, "label": "Reviewing code context..."})
+                    system_prompt = (
+                        f"You are Neuro-Fabric, an AI data engineer assistant. "
+                        f"The user has connected their GitHub repository ({_github_code_cache.get('repo', '')}) "
+                        f"which contains the following code files. Use this code to give better answers "
+                        f"about which database tables are actually used in the application, which are unused, "
+                        f"how the data flows through the code, and any code-level insights.\n\n"
+                        f"=== REPOSITORY CODE ===\n{code_ctx[:15000]}\n=== END CODE ==="
+                    )
+                    messages.append(SystemMessage(content=system_prompt))
+                else:
+                    await ws.send_json({"type": "phase", "phase": 2, "label": "Preparing context..."})
+                
+                messages.append(HumanMessage(content=msg))
+                
+                # Phase 4: Generating
+                await ws.send_json({"type": "phase", "phase": 3, "label": "Generating response..."})
+                
+                inp = {"messages": messages,
+                       "db_config": {"url": "", "name": "database"},
+                       "schema": pipeline_state.get("schema", {}),
+                       "quality_report": pipeline_state.get("quality_report", {}),
+                       "documentation": pipeline_state.get("documentation", {}),
+                       "artifacts": [], "current_task": "chat", "errors": []}
+                
+                # Run the blocking LLM call in a thread
+                result = await asyncio.to_thread(
+                    chat_app.invoke, inp,
+                    {"configurable": {"thread_id": chat_thread_id}}
+                )
+                
+                msgs = result.get("messages", [])
+                if not msgs:
+                    await ws.send_json({"type": "response", "content": "No response generated."})
+                else:
+                    content = extract_message_content(msgs[-1].content)
+                    await ws.send_json({"type": "response", "content": content})
+                    
+            except Exception as e:
+                logger.error("WS Chat LLM failed: %s", e)
+                # Fallback to smart chat
+                result = _smart_chat(msg)
+                await ws.send_json({"type": "response", "content": result.get("response", str(e))})
+                
+    except WebSocketDisconnect:
+        logger.info("WebSocket chat client disconnected")
+    except Exception as e:
+        logger.error("WebSocket error: %s", e)
+        try:
+            await ws.send_json({"type": "error", "content": str(e)})
+        except Exception:
+            pass
+
 def _smart_chat(msg: str, db_name: str = "") -> dict:
     """Smart chat responses using dynamically discovered database schema."""
     try:
@@ -893,7 +1024,7 @@ def _smart_chat(msg: str, db_name: str = "") -> dict:
         from sqlalchemy import text
         
         if not _current_engine:
-            return {"response": "⚠️ No database connected. Please connect a database in Settings first."}
+            return {"response": "No database connected. Please connect a database in Settings first."}
             
         engine = _current_engine
         inspector = get_inspector(engine)
@@ -920,10 +1051,10 @@ def _smart_chat(msg: str, db_name: str = "") -> dict:
                         else:
                             q = f'"{schema_name}"."{table_name}"'
                             n = c.execute(text(f"SELECT COUNT(*) FROM {q}")).fetchone()[0]
-                    return {"response": f"📊 There are **{n:,}** rows in the `{table_name}` table."}
+                    return {"response": f"There are **{n:,}** rows in the `{table_name}` table."}
             # List available tables
             table_list = [tn for _, tn in all_tables[:10]]
-            return {"response": f"📊 Available tables: {', '.join(table_list)}{'...' if len(all_tables) > 10 else ''}\n\nTry: *How many [table_name]?*"}
+            return {"response": f"Available tables: {', '.join(table_list)}{'...' if len(all_tables) > 10 else ''}\n\nTry: *How many [table_name]?*"}
         
         if any(k in ml for k in ["schema","table","list", "tables"]):
             table_list = [f"`{sn}.{tn}`" if sn != "main" else f"`{tn}`" for sn, tn in all_tables[:20]]
@@ -995,7 +1126,7 @@ def _smart_chat(msg: str, db_name: str = "") -> dict:
                         pass
             return {"response": "Could not retrieve sample data. The database may be empty or tables may have restricted access."}
         
-        return {"response": f"🧠 **Neuro-Fabric Chat**\n\nI can help you explore your database. Try asking:\n\n• *How many rows in [table]?*\n• *List all tables*\n• *Show revenue stats*\n• *Sample from [table]*\n\n💡 Add `GOOGLE_API_KEY` to `.env` for AI-powered responses!"}
+        return {"response": f"**Neuro-Fabric Chat**\n\nI can help you explore your database. Try asking:\n\n• *How many rows in [table]?*\n• *List all tables*\n• *Show revenue stats*\n• *Sample from [table]*\n\nAdd `GOOGLE_API_KEY` to `.env` for AI-powered responses!"}
     except Exception as e:
         logger.error(f"Smart chat error: {e}")
         return {"response": f"Error: {e}"}
@@ -1410,59 +1541,231 @@ def _ser_val(v):
     if isinstance(v, date): return v.isoformat()
     return str(v)
 
-# ── Neo4j Lineage Graph ──────────────────────────────────────────────────────
+# ── In-Memory Lineage Graph (derived from schema FK data) ────────────────────
 
-@app.get("/api/neo4j/status")
-async def neo4j_status():
-    """Check Neo4j connection status."""
-    from core.neo4j_connector import is_available, NEO4J_URI
-    return {"available": is_available(), "uri": NEO4J_URI}
-
-@app.post("/api/neo4j/sync")
-async def neo4j_sync():
-    """Push current schema to Neo4j as a lineage graph."""
-    from core.neo4j_connector import push_schema_to_neo4j
+@app.get("/api/lineage/graph")
+async def lineage_graph():
+    """Build a lineage graph from live schema FK relationships. No Neo4j needed."""
     schema = pipeline_state.get("schema", {})
-    if not schema:
-        # Try to build schema dynamically from DuckDB
+
+    # If pipeline schema is empty, build it live from DB
+    if not schema and _current_engine:
         try:
-            engine = _get_engine_forced()
-            from core.db_connectors import get_inspector, DuckDBEngine
-            inspector = get_inspector(engine)
-            schema_name = "main" if isinstance(engine, DuckDBEngine) else "public"
-            tables = inspector.get_table_names(schema=schema_name)
-            for t in tables:
-                cols = inspector.get_columns(t, schema=schema_name)
-                schema[t] = {
-                    "table_name": t, "schema_name": schema_name,
-                    "columns": [{"name": c["name"], "data_type": str(c.get("type", c.get("data_type", ""))), "nullable": c.get("nullable", True), "is_primary_key": False, "is_foreign_key": False} for c in cols],
-                    "foreign_keys": [], "row_count": 0,
-                }
+            from core.db_connectors import get_inspector, list_schemas, DuckDBEngine
+            inspector = get_inspector(_current_engine)
+            schemas_to_scan = ["public"]
+            if not isinstance(_current_engine, DuckDBEngine):
+                schemas_to_scan = list_schemas(_current_engine)
+            for sn in schemas_to_scan:
+                try:
+                    for t in inspector.get_table_names(schema=sn):
+                        full_name = f"{sn}.{t}" if sn != "public" else t
+                        cols = inspector.get_columns(t, schema=sn)
+                        fks = inspector.get_foreign_keys(t, schema=sn)
+                        pk_info = inspector.get_pk_constraint(t, schema=sn)
+                        pk_cols = pk_info.get("constrained_columns", []) if pk_info else []
+                        fk_cols = set()
+                        fk_list = []
+                        for fk in fks:
+                            ref_schema = fk.get("referred_schema") or sn
+                            ref_table = fk.get("referred_table", "")
+                            ref_full = f"{ref_schema}.{ref_table}" if ref_schema != "public" else ref_table
+                            for lc, rc in zip(fk.get("constrained_columns", []), fk.get("referred_columns", [])):
+                                fk_cols.add(lc)
+                                fk_list.append({"column": lc, "ref_table": ref_full, "ref_column": rc})
+                        try:
+                            with _current_engine.connect() as conn:
+                                row_count = conn.execute(text(f'SELECT COUNT(*) FROM "{sn}"."{t}"')).scalar() or 0
+                        except Exception:
+                            row_count = 0
+                        schema[full_name] = {
+                            "table_name": full_name,
+                            "schema_name": sn,
+                            "columns": [{"name": c["name"], "data_type": str(c.get("type", c.get("data_type", "unknown"))), "nullable": c.get("nullable", True), "is_primary_key": c["name"] in pk_cols, "is_foreign_key": c["name"] in fk_cols} for c in cols],
+                            "foreign_keys": fk_list,
+                            "row_count": row_count,
+                        }
+                except Exception as e:
+                    logger.warning(f"Lineage: failed to inspect schema {sn}: {e}")
         except Exception as e:
-            return {"status": "error", "error": str(e)}
-    result = push_schema_to_neo4j(schema)
-    return result
+            return {"nodes": [], "edges": [], "error": str(e)}
 
-@app.get("/api/neo4j/graph")
-async def neo4j_graph():
-    """Get the full lineage graph for visualization."""
-    from core.neo4j_connector import get_full_graph
-    return get_full_graph()
+    # Build nodes & edges from schema
+    nodes = []
+    edges = []
+    for table_name, table_data in schema.items():
+        sn = table_data.get("schema_name", "public")
+        nodes.append({
+            "id": table_name,
+            "label": table_name,
+            "schema": sn,
+            "row_count": table_data.get("row_count", 0),
+            "column_count": len(table_data.get("columns", [])),
+        })
+        for fk in table_data.get("foreign_keys", []):
+            ref = fk.get("ref_table", "")
+            if ref:
+                edges.append({
+                    "source": table_name,
+                    "target": ref,
+                    "label": f"{fk.get('column', '')} → {fk.get('ref_column', '')}",
+                })
 
-@app.get("/api/neo4j/lineage/{table}")
-async def neo4j_lineage(table: str):
-    """Get lineage for a specific table."""
-    from core.neo4j_connector import get_lineage
-    return get_lineage(table)
+    return {"nodes": nodes, "edges": edges, "table_count": len(nodes), "relationship_count": len(edges)}
+
+@app.get("/api/lineage/status")
+async def lineage_status():
+    """Lineage is now in-memory, always available when schema is loaded."""
+    has_schema = bool(pipeline_state.get("schema")) or bool(_current_engine)
+    return {"available": has_schema, "mode": "in-memory"}
+
+@app.get("/api/lineage/er-diagram")
+async def er_diagram():
+    """Generate a Mermaid ER diagram from the live schema FK data."""
+    # Re-use the lineage_graph logic to get the graph
+    graph_resp = await lineage_graph()
+    nodes = graph_resp.get("nodes", [])
+    edges = graph_resp.get("edges", [])
+
+    # Also need column details from the schema
+    schema = pipeline_state.get("schema", {})
+
+    lines = ["erDiagram"]
+    for node in nodes:
+        table_id = node["id"].replace(".", "_")
+        table_data = schema.get(node["id"], {})
+        cols = table_data.get("columns", [])
+        if cols:
+            lines.append(f"    {table_id} {{")
+            for col in cols:
+                dtype = str(col.get("data_type", col.get("type", "unknown"))).split("(")[0].upper()
+                pk = " PK" if col.get("is_primary_key") else ""
+                fk = " FK" if col.get("is_foreign_key") else ""
+                col_name = col.get("name", "unknown")
+                lines.append(f'        {dtype} {col_name}{pk}{fk}')
+            lines.append("    }")
+        else:
+            lines.append(f"    {table_id}")
+
+    for edge in edges:
+        src = edge["source"].replace(".", "_")
+        tgt = edge["target"].replace(".", "_")
+        label_text = edge.get("label", "").replace('"', "'")
+        lines.append(f'    {src} }}o--|| {tgt} : "{label_text}"')
+
+    return {"mermaid": "\n".join(lines), "table_count": len(nodes), "relationship_count": len(edges)}
 
 
-# ── GitHub Integration ───────────────────────────────────────────────────────
+@app.get("/api/query/suggestions")
+async def query_suggestions():
+    """Generate dynamic SQL quick-query suggestions from the live schema."""
+    graph_resp = await lineage_graph()
+    nodes = graph_resp.get("nodes", [])
+    edges = graph_resp.get("edges", [])
+    schema = pipeline_state.get("schema", {})
+
+    suggestions = []
+
+    # 1. Simple count for each table
+    if nodes:
+        tables_sql = "\nUNION ALL\n".join([
+            f"SELECT '{n['id']}' AS table_name, COUNT(*) AS row_count FROM \"{n['id'].split('.')[0]}\".\"{n['id'].split('.')[1]}\"" if '.' in n['id']
+            else f"SELECT '{n['id']}' AS table_name, COUNT(*) AS row_count FROM \"{n['id']}\""
+            for n in nodes[:6]
+        ])
+        suggestions.append({
+            "label": "Row Counts",
+            "sql": tables_sql + "\nORDER BY row_count DESC"
+        })
+
+    # 2. For each FK relationship, generate a JOIN query
+    for edge in edges[:3]:
+        src = edge["source"]
+        tgt = edge["target"]
+        label = edge.get("label", "")
+        parts = label.split(" → ")
+        if len(parts) == 2:
+            src_col, tgt_col = parts
+            src_q = f'"{src.split(".")[0]}"."{src.split(".")[1]}"' if "." in src else f'"{src}"'
+            tgt_q = f'"{tgt.split(".")[0]}"."{tgt.split(".")[1]}"' if "." in tgt else f'"{tgt}"'
+            # Get a few columns from each table
+            src_cols = schema.get(src, {}).get("columns", [])[:3]
+            tgt_cols = schema.get(tgt, {}).get("columns", [])[:3]
+            src_selects = ", ".join([f'a."{c["name"]}"' for c in src_cols]) or "a.*"
+            tgt_selects = ", ".join([f'b."{c["name"]}"' for c in tgt_cols]) or "b.*"
+            sql = f'SELECT {src_selects}, {tgt_selects}\nFROM {src_q} a\nJOIN {tgt_q} b ON a."{src_col}" = b."{tgt_col}"\nLIMIT 20'
+            suggestions.append({
+                "label": f"Join: {src.split('.')[-1]} — {tgt.split('.')[-1]}",
+                "sql": sql
+            })
+
+    # 3. If we have numeric columns, generate an aggregation
+    for node in nodes[:5]:
+        table_data = schema.get(node["id"], {})
+        cols = table_data.get("columns", [])
+        numeric_cols = [c for c in cols if any(t in str(c.get("data_type", c.get("type", ""))).lower() for t in ["int", "decimal", "numeric", "float", "real", "double", "money"])]
+        non_pk_cols = [c for c in cols if not c.get("is_primary_key") and not c.get("is_foreign_key")]
+        if numeric_cols and non_pk_cols:
+            num_col = numeric_cols[0]["name"]
+            tbl_q = f'"{node["id"].split(".")[0]}"."{node["id"].split(".")[1]}"' if "." in node["id"] else f'"{node["id"]}"'
+            sql = f'SELECT\n  COUNT(*) AS total_rows,\n  ROUND(AVG("{num_col}")::NUMERIC, 2) AS avg_{num_col.lower()},\n  MIN("{num_col}") AS min_{num_col.lower()},\n  MAX("{num_col}") AS max_{num_col.lower()}\nFROM {tbl_q}'
+            suggestions.append({
+                "label": f"Stats: {node['id'].split('.')[-1]}",
+                "sql": sql
+            })
+            break  # Only one aggregation query
+
+    # 4. Sample data from first table
+    if nodes:
+        first = nodes[0]
+        tbl_q = f'"{first["id"].split(".")[0]}"."{first["id"].split(".")[1]}"' if "." in first["id"] else f'"{first["id"]}"'
+        suggestions.append({
+            "label": f"Sample: {first['id'].split('.')[-1]}",
+            "sql": f'SELECT * FROM {tbl_q} LIMIT 10'
+        })
+
+    return {"suggestions": suggestions}
+
+
+# ── GitHub Integration (localStorage-based) ──────────────────────────────────
 
 @app.get("/api/github/status")
-async def github_status():
-    """Check GitHub integration status."""
-    from core.github_webhook import is_configured, GITHUB_REPO
-    return {"configured": is_configured(), "repo": GITHUB_REPO}
+async def github_status(token: str = "", repo: str = ""):
+    """Check GitHub integration status using frontend-supplied credentials."""
+    configured = bool(token and repo)
+    return {"configured": configured, "repo": repo}
+
+@app.get("/api/github/prs")
+async def github_prs(token: str = "", repo: str = "", state: str = "closed", per_page: int = 10):
+    """Get recent PRs using frontend-supplied credentials (from localStorage)."""
+    if not token or not repo:
+        return {"prs": [], "error": "GitHub not configured. Add token and repo in Settings."}
+    import httpx
+    url = f"https://api.github.com/repos/{repo}/pulls"
+    headers = {"Authorization": f"token {token}", "Accept": "application/vnd.github.v3+json"}
+    params = {"state": state, "per_page": per_page, "sort": "updated", "direction": "desc"}
+    try:
+        async with httpx.AsyncClient() as client:
+            resp = await client.get(url, headers=headers, params=params)
+            if resp.status_code == 200:
+                prs = [
+                    {
+                        "number": pr["number"],
+                        "title": pr["title"],
+                        "state": pr["state"],
+                        "merged": pr.get("merged_at") is not None,
+                        "author": pr["user"]["login"],
+                        "updated_at": pr["updated_at"],
+                        "url": pr["html_url"],
+                        "base_branch": pr["base"]["ref"],
+                    }
+                    for pr in resp.json()
+                ]
+                return {"prs": prs}
+            else:
+                return {"prs": [], "error": f"GitHub API returned {resp.status_code}"}
+    except Exception as e:
+        return {"prs": [], "error": str(e)}
 
 @app.post("/api/github/webhook")
 async def github_webhook(payload: dict):
@@ -1470,19 +1773,131 @@ async def github_webhook(payload: dict):
     from core.github_webhook import handle_webhook
     return await handle_webhook(payload)
 
-@app.get("/api/github/prs")
-async def github_prs(state: str = "closed", per_page: int = 10):
-    """Get recent PRs from the configured repository."""
-    from core.github_webhook import get_recent_prs
-    prs = await get_recent_prs(state=state, per_page=per_page)
-    return {"prs": prs}
-
 @app.get("/api/github/file")
-async def github_file(path: str, ref: str = "main"):
-    """Get file content from GitHub."""
-    from core.github_webhook import get_file_content
-    return await get_file_content(path=path, ref=ref)
+async def github_file(path: str, ref: str = "main", token: str = "", repo: str = ""):
+    """Get file content from GitHub using frontend-supplied credentials."""
+    if not token or not repo:
+        return {"error": "GitHub not configured"}
+    import httpx, base64
+    url = f"https://api.github.com/repos/{repo}/contents/{path}"
+    headers = {"Authorization": f"token {token}", "Accept": "application/vnd.github.v3+json"}
+    params = {"ref": ref}
+    async with httpx.AsyncClient() as client:
+        resp = await client.get(url, headers=headers, params=params)
+        if resp.status_code == 200:
+            data = resp.json()
+            content = base64.b64decode(data.get("content", "")).decode("utf-8", errors="replace")
+            return {"path": path, "content": content, "sha": data.get("sha", ""), "size": data.get("size", 0)}
+    return {"error": f"File not found: {path}"}
 
+# -- In-memory cache for scanned GitHub code context --
+_github_code_cache = {"repo": "", "files": [], "context": "", "scanned_at": ""}
+
+@app.get("/api/github/scan")
+async def github_scan(token: str = "", repo: str = "", ref: str = "main"):
+    """Scan a GitHub repo's file tree and cache relevant code files for AI context."""
+    global _github_code_cache
+    if not token or not repo:
+        return {"error": "GitHub not configured"}
+    
+    import httpx, base64
+    from datetime import datetime
+    
+    # Return cache if same repo and scanned recently
+    if _github_code_cache["repo"] == repo and _github_code_cache["context"]:
+        return {
+            "repo": repo,
+            "file_count": len(_github_code_cache["files"]),
+            "cached": True,
+            "scanned_at": _github_code_cache["scanned_at"],
+            "files": _github_code_cache["files"],
+        }
+    
+    headers = {"Authorization": f"token {token}", "Accept": "application/vnd.github.v3+json"}
+    
+    # Fetch the git tree recursively
+    async with httpx.AsyncClient(timeout=30) as client:
+        tree_resp = await client.get(
+            f"https://api.github.com/repos/{repo}/git/trees/{ref}?recursive=1",
+            headers=headers
+        )
+        if tree_resp.status_code != 200:
+            return {"error": f"Failed to scan repo: {tree_resp.status_code}"}
+        
+        tree = tree_resp.json().get("tree", [])
+        
+        # Filter for relevant code files (SQL, Python, JS/TS, config)
+        code_extensions = {".sql", ".py", ".js", ".ts", ".jsx", ".tsx", ".yaml", ".yml", ".env.example"}
+        relevant_files = []
+        for item in tree:
+            if item["type"] != "blob":
+                continue
+            path = item["path"]
+            # Skip node_modules, dist, etc
+            if any(skip in path for skip in ["node_modules/", "dist/", ".git/", "__pycache__/", ".next/", "venv/"]):
+                continue
+            ext = "." + path.rsplit(".", 1)[-1] if "." in path else ""
+            if ext in code_extensions or path.endswith(".env.example"):
+                relevant_files.append({"path": path, "size": item.get("size", 0)})
+        
+        # Fetch content of files that reference database tables (prioritize SQL and dao files)
+        # Limit to ~15 most relevant files to avoid rate limits
+        priority_files = sorted(relevant_files, key=lambda f: (
+            0 if f["path"].endswith(".sql") else
+            1 if "model" in f["path"].lower() or "schema" in f["path"].lower() else
+            2 if f["path"].endswith(".py") else
+            3 if any(f["path"].endswith(e) for e in [".js", ".ts", ".jsx", ".tsx"]) else 4
+        ))[:15]
+        
+        context_parts = []
+        fetched_files = []
+        for file_info in priority_files:
+            if file_info["size"] > 50000:  # Skip files > 50KB
+                continue
+            try:
+                file_resp = await client.get(
+                    f"https://api.github.com/repos/{repo}/contents/{file_info['path']}",
+                    headers=headers, params={"ref": ref}
+                )
+                if file_resp.status_code == 200:
+                    data = file_resp.json()
+                    content = base64.b64decode(data.get("content", "")).decode("utf-8", errors="replace")
+                    # Truncate very long files
+                    if len(content) > 5000:
+                        content = content[:5000] + "\n... (truncated)"
+                    context_parts.append(f"--- {file_info['path']} ---\n{content}")
+                    fetched_files.append(file_info["path"])
+            except Exception:
+                continue
+        
+        code_context = "\n\n".join(context_parts)
+        _github_code_cache = {
+            "repo": repo,
+            "files": fetched_files,
+            "context": code_context,
+            "scanned_at": datetime.now().isoformat(),
+        }
+        
+        return {
+            "repo": repo,
+            "file_count": len(fetched_files),
+            "total_relevant": len(relevant_files),
+            "cached": False,
+            "scanned_at": _github_code_cache["scanned_at"],
+            "files": fetched_files,
+        }
+
+@app.get("/api/github/code-context")
+async def github_code_context():
+    """Return the cached GitHub code context for use in AI chat."""
+    if _github_code_cache["context"]:
+        return {
+            "repo": _github_code_cache["repo"],
+            "file_count": len(_github_code_cache["files"]),
+            "context_length": len(_github_code_cache["context"]),
+            "available": True,
+        }
+    return {"available": False}
 
 # ── Serve Frontend ───────────────────────────────────────────────────────────
 import os

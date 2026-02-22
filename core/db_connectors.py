@@ -156,8 +156,8 @@ def get_engine(db_config: dict[str, Any] | None = None) -> Engine | DuckDBEngine
     """
     Return an engine. Priority:
     1. If db_config has a url → use it (Postgres/Snowflake/MSSQL).
-    2. Default → DuckDB local file.
-    3. Fallback → DATABASE_URL env var or Supabase.
+    2. DATABASE_URL env var or Supabase → Postgres.
+    3. Fallback → DuckDB local file.
     """
     global _duckdb_engine
 
@@ -167,16 +167,16 @@ def get_engine(db_config: dict[str, Any] | None = None) -> Engine | DuckDBEngine
         logger.info("Connecting with provided URL.")
         return create_engine(url, pool_pre_ping=True)
 
-    # Default: DuckDB local
+    # Priority: Postgres from DATABASE_URL (most common in production)
+    if DATABASE_URL:
+        logger.info("Using DATABASE_URL for SQL tools.")
+        return create_engine(DATABASE_URL, pool_pre_ping=True)
+
+    # Fallback: DuckDB local (only if no Postgres configured)
     if DUCKDB_PATH.exists():
         if _duckdb_engine is None:
             _duckdb_engine = DuckDBEngine(DUCKDB_PATH)
         return _duckdb_engine
-
-    # Fallback: Postgres from DATABASE_URL
-    if DATABASE_URL:
-        logger.info("DuckDB not found; falling back to DATABASE_URL.")
-        return create_engine(DATABASE_URL, pool_pre_ping=True)
 
     # Last resort: Supabase
     try:

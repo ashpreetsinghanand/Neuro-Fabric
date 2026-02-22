@@ -1,0 +1,59 @@
+name: CI Pipeline
+
+on:
+  push:
+    branches: [main, dev]
+  pull_request:
+    branches: [main, dev]
+
+jobs:
+  lint-and-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install backend dependencies
+        run: |
+          cd backend
+          pip install -r requirements.txt
+          pip install pytest flake8
+
+      - name: Lint backend
+        run: |
+          cd backend
+          flake8 services/ --max-line-length=120
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install frontend dependencies
+        run: |
+          cd frontend
+          npm ci
+
+      - name: Build frontend
+        run: |
+          cd frontend
+          npm run build
+
+  deploy-staging:
+    needs: lint-and-test
+    if: github.ref == 'refs/heads/dev' && github.event_name == 'push'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Deploy to Staging
+        run: echo "Deploying to staging..."
+
+      - name: Run migrations
+        run: |
+          psql $DATABASE_URL -f database/migrations/001_initial_schema.sql
+        env:
+          DATABASE_URL: ${{ secrets.STAGING_DATABASE_URL }}
